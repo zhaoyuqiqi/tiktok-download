@@ -1,4 +1,4 @@
-import type { ProcessResult, ProcessRunner } from "./types.ts";
+import type { ProcessResult, ProcessRunner } from "../types.ts";
 
 export class YtDlpRunner implements ProcessRunner {
   constructor(private readonly binPath: string = "yt-dlp") {}

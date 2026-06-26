@@ -1,4 +1,4 @@
-import type { DownloadResult, Summary, Task, Uploader } from "./types.ts";
+import type { DownloadResult, Summary, Task, Uploader } from "../types.ts";
 import { TaskQueue } from "./task.ts";
 
 export interface SchedulerOptions {

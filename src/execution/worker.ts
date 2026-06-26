@@ -1,4 +1,4 @@
-import type { DownloadResult, ProcessRunner, Task } from "./types.ts";
+import type { DownloadResult, ProcessRunner, Task } from "../types.ts";
 
 export async function download(
   runner: ProcessRunner,

@@ -1,4 +1,4 @@
-import type { Uploader } from "./types.ts";
+import type { Uploader } from "../types.ts";
 
 export class NoopUploader implements Uploader {
   async upload(_filePath: string): Promise<void> {

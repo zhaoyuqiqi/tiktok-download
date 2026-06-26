@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { download } from "./worker.ts";
-import type { ProcessResult, ProcessRunner, Task } from "./types.ts";
+import type { ProcessResult, ProcessRunner, Task } from "../types.ts";
 
 const task: Task = {
   id: "a",

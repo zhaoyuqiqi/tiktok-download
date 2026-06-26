@@ -1,4 +1,4 @@
-import type { ProcessRunner, VideoInfo } from "./types.ts";
+import type { ProcessRunner, VideoInfo } from "../types.ts";
 
 interface RawEntry {
   id?: string;

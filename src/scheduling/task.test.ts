@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { createTask, TaskQueue } from "./task.ts";
-import type { VideoInfo } from "./types.ts";
+import type { VideoInfo } from "../types.ts";
 
 const v = (id: string): VideoInfo => ({ id, url: `https://x/${id}` });
 

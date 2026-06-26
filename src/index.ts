@@ -1,10 +1,10 @@
 import type { Config, Task, VideoInfo } from "./types.ts";
-import { YtDlpRunner, checkYtDlpAvailable } from "./runner.ts";
-import { parse } from "./parser.ts";
-import { createTask, TaskQueue } from "./task.ts";
-import { download } from "./worker.ts";
-import { runScheduler } from "./scheduler.ts";
-import { NoopUploader } from "./uploader.ts";
+import { YtDlpRunner, checkYtDlpAvailable } from "./execution/runner.ts";
+import { parse } from "./parsing/parser.ts";
+import { createTask, TaskQueue } from "./scheduling/task.ts";
+import { download } from "./execution/worker.ts";
+import { runScheduler } from "./scheduling/scheduler.ts";
+import { NoopUploader } from "./upload/uploader.ts";
 
 export function parseArgs(argv: string[]): Config {
   let url: string | undefined;

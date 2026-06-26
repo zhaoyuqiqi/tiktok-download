@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { parse } from "./parser.ts";
-import type { ProcessResult, ProcessRunner } from "./types.ts";
+import type { ProcessResult, ProcessRunner } from "../types.ts";
 
 function fakeRunner(stdout: string, calls: string[][] = []): ProcessRunner {
   return {

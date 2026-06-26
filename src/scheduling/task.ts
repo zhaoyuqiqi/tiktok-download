@@ -1,4 +1,4 @@
-import type { Summary, Task, VideoInfo } from "./types.ts";
+import type { Summary, Task, VideoInfo } from "../types.ts";
 
 export function createTask(video: VideoInfo): Task {
   return {
