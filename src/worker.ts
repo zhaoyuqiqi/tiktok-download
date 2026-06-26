@@ -4,14 +4,15 @@ export async function download(
   runner: ProcessRunner,
   task: Task,
   outputDir: string,
+  proxy?: string,
 ): Promise<DownloadResult> {
-  const result = await runner.run([
-    "-P",
-    outputDir,
-    "--print",
-    "after_move:filepath",
-    task.url,
-  ]);
+  const args = ["-P", outputDir, "--print", "after_move:filepath"];
+  if (proxy !== undefined) {
+    args.push("--proxy", proxy);
+  }
+  args.push(task.url);
+
+  const result = await runner.run(args);
 
   if (result.code === 0) {
     const lines = result.stdout

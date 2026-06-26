@@ -16,10 +16,14 @@ export async function parse(
   runner: ProcessRunner,
   url: string,
   limit?: number,
+  proxy?: string,
 ): Promise<VideoInfo[]> {
   const args = ["-J", "--flat-playlist"];
   if (limit !== undefined) {
     args.push("-I", `:${limit}`);
+  }
+  if (proxy !== undefined) {
+    args.push("--proxy", proxy);
   }
   args.push(url);
 

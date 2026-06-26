@@ -29,6 +29,16 @@ test("解析 --limit --workers --retry -o", () => {
   expect(cfg.outputDir).toBe("./videos");
 });
 
+test("解析 --proxy", () => {
+  const cfg = parseArgs(["https://tiktok.com/@u/video/1", "--proxy", "http://127.0.0.1:7890"]);
+  expect(cfg.proxy).toBe("http://127.0.0.1:7890");
+});
+
+test("默认无 proxy", () => {
+  const cfg = parseArgs(["https://tiktok.com/@u/video/1"]);
+  expect(cfg.proxy).toBeUndefined();
+});
+
 test("缺少 url 抛错", () => {
   expect(() => parseArgs([])).toThrow();
 });

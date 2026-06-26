@@ -63,6 +63,21 @@ test("无 limit 时不传 -I", async () => {
   expect(calls[0]).not.toContain("-I");
 });
 
+test("指定 proxy 时透传 --proxy", async () => {
+  const calls: string[][] = [];
+  const json = JSON.stringify({ id: "v1", title: "x" });
+  await parse(fakeRunner(json, calls), "https://tiktok.com/@u", undefined, "http://127.0.0.1:7890");
+  expect(calls[0]).toContain("--proxy");
+  expect(calls[0]).toContain("http://127.0.0.1:7890");
+});
+
+test("未指定 proxy 时不传 --proxy", async () => {
+  const calls: string[][] = [];
+  const json = JSON.stringify({ id: "v1", title: "x" });
+  await parse(fakeRunner(json, calls), "https://tiktok.com/@u");
+  expect(calls[0]).not.toContain("--proxy");
+});
+
 test("非法 JSON 抛错", async () => {
   const runner: ProcessRunner = {
     async run() {

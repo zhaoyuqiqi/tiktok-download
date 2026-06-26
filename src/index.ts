@@ -12,6 +12,7 @@ export function parseArgs(argv: string[]): Config {
   let workers = 2;
   let retry = 2;
   let outputDir = "./output";
+  let proxy: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -29,6 +30,9 @@ export function parseArgs(argv: string[]): Config {
       case "--output":
         outputDir = argv[++i] ?? outputDir;
         break;
+      case "--proxy":
+        proxy = argv[++i];
+        break;
       default:
         if (arg !== undefined && !arg.startsWith("-")) {
           url = arg;
@@ -37,10 +41,10 @@ export function parseArgs(argv: string[]): Config {
   }
 
   if (url === undefined) {
-    throw new Error("用法: download <url> [--limit N] [--workers 2] [--retry 2] [-o ./output]");
+    throw new Error("用法: download <url> [--limit N] [--workers 2] [--retry 2] [-o ./output] [--proxy URL]");
   }
 
-  return { url, limit, workers, retry, outputDir };
+  return { url, limit, workers, retry, outputDir, proxy };
 }
 
 export async function main(): Promise<void> {
@@ -61,7 +65,7 @@ export async function main(): Promise<void> {
 
   let videos;
   try {
-    videos = await parse(runner, cfg.url, cfg.limit);
+    videos = await parse(runner, cfg.url, cfg.limit, cfg.proxy);
   } catch (err) {
     console.error("解析失败:", (err as Error).message);
     process.exit(1);
@@ -73,7 +77,7 @@ export async function main(): Promise<void> {
   const summary = await runScheduler(
     queue,
     { workers: cfg.workers, retry: cfg.retry },
-    (task: Task) => download(runner, task, cfg.outputDir),
+    (task: Task) => download(runner, task, cfg.outputDir, cfg.proxy),
     uploader,
   );
 

@@ -19,6 +19,17 @@
 - **WHEN** 运行环境中 `yt-dlp` 不在 PATH 中
 - **THEN** 系统 SHALL 输出明确的错误信息并以非 0 状态码退出,不创建任何任务
 
+### Requirement: 代理支持
+系统 SHALL 支持通过 `--proxy <url>` 指定一个代理地址。当指定该参数时,系统 SHALL 在解析(`yt-dlp -J`)与下载(yt-dlp)两个阶段都将该代理透传给 yt-dlp 的 `--proxy` 选项。未指定时 SHALL 不向 yt-dlp 传 `--proxy`。
+
+#### Scenario: 指定代理透传到解析与下载
+- **WHEN** 用户执行 `download <url> --proxy http://127.0.0.1:7890`
+- **THEN** 系统在调用 yt-dlp 解析与下载时均带上 `--proxy http://127.0.0.1:7890`
+
+#### Scenario: 未指定代理
+- **WHEN** 用户执行 `download <url>` 且未指定 `--proxy`
+- **THEN** 系统调用 yt-dlp 时不带 `--proxy` 选项
+
 ### Requirement: 任务建模与状态管理
 系统 SHALL 为每个视频创建一个独立的内存任务,任务具有状态(pending / running / success / failed)与重试计数。任务之间相互独立,单个任务的失败 SHALL NOT 影响其他任务。
 

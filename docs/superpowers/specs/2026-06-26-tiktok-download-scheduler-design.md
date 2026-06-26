@@ -167,6 +167,10 @@ url ──parse──▶ VideoInfo[] ──map──▶ Task[] ──▶ TaskQue
   4. 队列排空后等待 in-flight 上传收敛。
 - **冒烟**:对真实/受控 URL 跑一次,确认输出落在 `./output` 且上传 hook 被调用。
 
+## 5b. 代理支持(范围扩展)
+
+CLI 新增可选 `--proxy <url>`,写入 `Config.proxy`。`parse(runner,url,limit?,proxy?)` 与 `download(runner,task,outputDir,proxy?)` 在 proxy 存在时向 yt-dlp args 追加 `--proxy <url>`,使解析与下载两个阶段都经代理。未指定时不传 `--proxy`。理由:TikTok 在部分网络环境需经代理访问。
+
 ## 6. 非目标
 
 持久化、断点续传、跳过已下载、取消/暂停、进度条 UI、HTTP 服务/库 API、对象存储上传具体实现。

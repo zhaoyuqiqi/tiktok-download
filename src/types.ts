@@ -34,6 +34,7 @@ export interface Config {
   workers: number; // 默认 2
   retry: number; // 默认 2
   outputDir: string; // 默认 ./output
+  proxy?: string; // 透传给 yt-dlp --proxy,未指定则不传
 }
 
 export interface DownloadResult {

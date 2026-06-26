@@ -39,6 +39,28 @@ test("透传 -P outputDir 与 --print after_move:filepath 与 url", async () => 
   expect(calls[0]).toContain(task.url);
 });
 
+test("指定 proxy 时透传 --proxy", async () => {
+  const calls: string[][] = [];
+  await download(
+    runnerWith({ code: 0, stdout: "/abs/x.mp4", stderr: "" }, calls),
+    task,
+    "./output",
+    "http://127.0.0.1:7890",
+  );
+  expect(calls[0]).toContain("--proxy");
+  expect(calls[0]).toContain("http://127.0.0.1:7890");
+});
+
+test("未指定 proxy 时不传 --proxy", async () => {
+  const calls: string[][] = [];
+  await download(
+    runnerWith({ code: 0, stdout: "/abs/x.mp4", stderr: "" }, calls),
+    task,
+    "./output",
+  );
+  expect(calls[0]).not.toContain("--proxy");
+});
+
 test("失败时返回 ok:false 与 stderr", async () => {
   const r = await download(
     runnerWith({ code: 1, stdout: "", stderr: "ERROR: boom" }),
