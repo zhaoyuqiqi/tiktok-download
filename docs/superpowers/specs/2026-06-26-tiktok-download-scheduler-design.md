@@ -2,6 +2,8 @@
 comet_change: tiktok-download-scheduler
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-26-tiktok-download-scheduler
+status: final
 ---
 
 # TikTok 下载任务调度管理 — 技术设计

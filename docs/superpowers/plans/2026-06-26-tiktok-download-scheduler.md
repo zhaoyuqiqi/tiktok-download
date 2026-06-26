@@ -2,6 +2,7 @@
 change: tiktok-download-scheduler
 design-doc: docs/superpowers/specs/2026-06-26-tiktok-download-scheduler-design.md
 base-ref: 01bb742bc7006b580adfd5d6a6a7e88971880a98
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 # TikTok 下载任务调度管理 实施计划
@@ -31,6 +32,7 @@ base-ref: 01bb742bc7006b580adfd5d6a6a7e88971880a98
 - 所有源码放 `src/`,测试与被测文件同目录(如 `src/parser.test.ts`)。
 - `runner` 是唯一接触子进程的模块,其它模块禁止直接 `Bun.spawn`。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## File Structure
@@ -50,6 +52,7 @@ base-ref: 01bb742bc7006b580adfd5d6a6a7e88971880a98
 
 任务顺序按依赖:types → runner → parser → task → uploader → worker → scheduler → cli → 冒烟。与 `openspec/changes/tiktok-download-scheduler/tasks.md` 的边界对齐(映射见每个任务标题后的括注)。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 1: 核心类型定义(tasks 1.1)
@@ -140,6 +143,7 @@ git commit -m "feat: add core types for tiktok download scheduler"
 
 **验收标准:** `src/types.ts` 导出上述 10 个类型,`tsc --noEmit` 通过。此任务无运行时行为,故无单测。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 2: 子进程封装 runner(tasks 1.2)
@@ -196,6 +200,7 @@ git commit -m "feat: add YtDlpRunner subprocess wrapper and availability check"
 
 **验收标准:** `YtDlpRunner.run` 用 `Bun.spawn` 收集 stdout/stderr/code;`checkYtDlpAvailable()` 用 `Bun.which`;`tsc` 通过,函数可无错调用。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 3: 解析模块 parser(tasks 2.1, 2.2)
@@ -368,6 +373,7 @@ git commit -m "feat: add parser for single video and playlist with limit"
 
 **验收标准:** 覆盖 spec 场景「解析单个视频」「解析用户主页并限制数量」「解析用户主页未指定数量」。`parse` 识别单/多视频、`-I :N` 仅在 `limit` 存在时透传、entry 缺 url 用 id 兜底、解析失败抛错。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 4: 任务模型与队列 task(tasks 3.1, 3.2)
@@ -508,6 +514,7 @@ git commit -m "feat: add Task model and in-memory TaskQueue"
 
 **验收标准:** 覆盖 spec 场景「每个视频一个独立任务」。`next()` 顺序推进且置 running、`requeue` 递增 attempts 并复位 pending、`summary()` 统计正确。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 5: 上传桩 uploader(tasks 4.1)
@@ -565,6 +572,7 @@ git commit -m "feat: add NoopUploader stub"
 
 **验收标准:** `NoopUploader` 实现 `Uploader` 接口,`upload` 永远成功 resolve。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 6: 执行模块 worker(tasks 5.1, 5.2)
@@ -687,6 +695,7 @@ git commit -m "feat: add worker download wrapper with filepath extraction"
 
 **验收标准:** 覆盖 spec 场景「下载输出位置」(`-P ./output`)。成功取最后非空行为 filePath,失败返回 stderr。args 不带 `-J`(下载而非解析)。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 7: 调度模块 scheduler(tasks 6.1, 6.2, 6.3, 6.4)
@@ -899,6 +908,7 @@ git commit -m "feat: add concurrency scheduler with retry and fire-and-forget up
 
 **验收标准:** 覆盖 spec 场景「并发数受 Worker 数量约束」「重试后成功」「重试耗尽仍失败」「下载成功触发上传」「上传失败不影响下载状态」。并发峰值 ≤ workers、重试用固定延迟、上传 fire-and-forget 且不阻塞、队列排空后等待 in-flight 上传收敛。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 8: CLI 入口 index(tasks 7.1, 7.2)
@@ -1075,6 +1085,7 @@ git commit -m "feat: add CLI entry assembling parse/queue/scheduler/uploader"
 
 **验收标准:** 覆盖 spec 场景「yt-dlp 不可用」(不可用即报错非 0 退出、不创建任务)。`parseArgs` 默认值与各开关正确;`main` 组装全链路;汇总格式 `成功 X / 失败 Y / 共 Z`;有失败非 0 退出。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Task 9: 端到端冒烟(tasks 8.3)
@@ -1126,6 +1137,7 @@ git commit -m "chore: ignore output directory for downloaded videos"
 
 **验收标准:** 真实 yt-dlp 回路下,单视频(及可选的多视频 + limit)下载成功,文件落在 `./output`,汇总输出正确;下载产物不进 git。无 yt-dlp 环境时明确记录跳过。
 
+archived-with: 2026-06-26-tiktok-download-scheduler
 ---
 
 ## Self-Review
