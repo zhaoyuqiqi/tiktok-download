@@ -1,0 +1,88 @@
+import type { Config, Task } from "./types.ts";
+import { YtDlpRunner, checkYtDlpAvailable } from "./runner.ts";
+import { parse } from "./parser.ts";
+import { createTask, TaskQueue } from "./task.ts";
+import { download } from "./worker.ts";
+import { runScheduler } from "./scheduler.ts";
+import { NoopUploader } from "./uploader.ts";
+
+export function parseArgs(argv: string[]): Config {
+  let url: string | undefined;
+  let limit: number | undefined;
+  let workers = 2;
+  let retry = 2;
+  let outputDir = "./output";
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    switch (arg) {
+      case "--limit":
+        limit = Number(argv[++i]);
+        break;
+      case "--workers":
+        workers = Number(argv[++i]);
+        break;
+      case "--retry":
+        retry = Number(argv[++i]);
+        break;
+      case "-o":
+      case "--output":
+        outputDir = argv[++i] ?? outputDir;
+        break;
+      default:
+        if (arg !== undefined && !arg.startsWith("-")) {
+          url = arg;
+        }
+    }
+  }
+
+  if (url === undefined) {
+    throw new Error("用法: download <url> [--limit N] [--workers 2] [--retry 2] [-o ./output]");
+  }
+
+  return { url, limit, workers, retry, outputDir };
+}
+
+export async function main(): Promise<void> {
+  let cfg: Config;
+  try {
+    cfg = parseArgs(Bun.argv.slice(2));
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+
+  if (!checkYtDlpAvailable()) {
+    console.error("错误: 未在 PATH 中找到 yt-dlp,请先安装 yt-dlp 后重试。");
+    process.exit(1);
+  }
+
+  const runner = new YtDlpRunner();
+
+  let videos;
+  try {
+    videos = await parse(runner, cfg.url, cfg.limit);
+  } catch (err) {
+    console.error("解析失败:", (err as Error).message);
+    process.exit(1);
+  }
+
+  const queue = new TaskQueue(videos.map(createTask));
+  const uploader = new NoopUploader();
+
+  const summary = await runScheduler(
+    queue,
+    { workers: cfg.workers, retry: cfg.retry },
+    (task: Task) => download(runner, task, cfg.outputDir),
+    uploader,
+  );
+
+  console.log(`成功 ${summary.success} / 失败 ${summary.failed} / 共 ${summary.total}`);
+  if (summary.failed > 0) {
+    process.exitCode = 1;
+  }
+}
+
+if (import.meta.main) {
+  await main();
+}
