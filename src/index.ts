@@ -1,4 +1,4 @@
-import type { Config, Task } from "./types.ts";
+import type { Config, Task, VideoInfo } from "./types.ts";
 import { YtDlpRunner, checkYtDlpAvailable } from "./runner.ts";
 import { parse } from "./parser.ts";
 import { createTask, TaskQueue } from "./task.ts";
@@ -14,17 +14,25 @@ export function parseArgs(argv: string[]): Config {
   let outputDir = "./output";
   let proxy: string | undefined;
 
+  function numArg(name: string, raw: string | undefined): number {
+    const n = Number(raw);
+    if (raw === undefined || !Number.isFinite(n)) {
+      throw new Error(`${name} 需要一个数值,收到: ${raw ?? "(空)"}`);
+    }
+    return n;
+  }
+
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     switch (arg) {
       case "--limit":
-        limit = Number(argv[++i]);
+        limit = numArg("--limit", argv[++i]);
         break;
       case "--workers":
-        workers = Number(argv[++i]);
+        workers = numArg("--workers", argv[++i]);
         break;
       case "--retry":
-        retry = Number(argv[++i]);
+        retry = numArg("--retry", argv[++i]);
         break;
       case "-o":
       case "--output":
@@ -63,7 +71,7 @@ export async function main(): Promise<void> {
 
   const runner = new YtDlpRunner();
 
-  let videos;
+  let videos: VideoInfo[];
   try {
     videos = await parse(runner, cfg.url, cfg.limit, cfg.proxy);
   } catch (err) {

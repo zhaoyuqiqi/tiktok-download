@@ -20,6 +20,9 @@ export async function download(
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
     const filePath = lines[lines.length - 1];
+    if (filePath === undefined) {
+      return { ok: false, error: "下载进程成功退出但未获得文件路径" };
+    }
     return { ok: true, filePath };
   }
 

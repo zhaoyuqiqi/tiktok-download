@@ -42,3 +42,15 @@ test("默认无 proxy", () => {
 test("缺少 url 抛错", () => {
   expect(() => parseArgs([])).toThrow();
 });
+
+test("--workers 非数值抛错", () => {
+  expect(() => parseArgs(["https://x", "--workers", "abc"])).toThrow();
+});
+
+test("--retry 缺值抛错", () => {
+  expect(() => parseArgs(["https://x", "--retry"])).toThrow();
+});
+
+test("--limit 非数值抛错", () => {
+  expect(() => parseArgs(["https://x", "--limit", "xx"])).toThrow();
+});

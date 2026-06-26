@@ -61,6 +61,16 @@ test("未指定 proxy 时不传 --proxy", async () => {
   expect(calls[0]).not.toContain("--proxy");
 });
 
+test("code=0 但 stdout 无可用路径时返回 ok:false", async () => {
+  const r = await download(
+    runnerWith({ code: 0, stdout: "\n  \n", stderr: "" }),
+    task,
+    "./output",
+  );
+  expect(r.ok).toBe(false);
+  expect(r.error).toBeDefined();
+});
+
 test("失败时返回 ok:false 与 stderr", async () => {
   const r = await download(
     runnerWith({ code: 1, stdout: "", stderr: "ERROR: boom" }),
