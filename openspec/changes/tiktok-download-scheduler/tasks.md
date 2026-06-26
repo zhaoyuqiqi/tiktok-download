@@ -38,9 +38,9 @@
 
 - [x] 8.1 task/queue 与 scheduler 并发约束的单元测试(mock worker,验证活跃数 ≤ workers、重试、上传不阻塞)
 - [x] 8.2 parser 解析逻辑测试(mock yt-dlp -J 输出:单视频 / entries / limit)
-- [ ] 8.3 端到端冒烟:对真实/受控 URL 跑一次,确认输出落在 ./output 且上传 hook 被调用
+- [x] 8.3 端到端冒烟:对真实/受控 URL 跑一次,确认输出落在 ./output 且上传 hook 被调用
 
 ## 9. 代理支持(范围扩展:用户要求 --proxy)
 
-- [ ] 9.1 `Config` 增加 `proxy?`;`parse` 与 `download` 在 proxy 存在时透传 `--proxy <url>` 给 yt-dlp(含 parser/worker 单测)
-- [ ] 9.2 `parseArgs` 解析 `--proxy`;CLI 组装时把 proxy 传入 parse 与 download 闭包(含 cli 单测)
+- [x] 9.1 `Config` 增加 `proxy?`;`parse` 与 `download` 在 proxy 存在时透传 `--proxy <url>` 给 yt-dlp(含 parser/worker 单测)
+- [x] 9.2 `parseArgs` 解析 `--proxy`;CLI 组装时把 proxy 传入 parse 与 download 闭包(含 cli 单测)
