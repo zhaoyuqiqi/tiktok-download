@@ -1,0 +1,14 @@
+{
+  "change": "tiktok-download-scheduler",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "bdd7a823a47e99c72a4564045f72ab63888e355bdfbad37f1425f200fff5d1f2",
+  "files": [
+    { "path": "openspec/changes/tiktok-download-scheduler/proposal.md", "sha256": "2b83e775fe449f3f18bc80d7997e6a834e6a5ff4549cad39ff99927fd5371957" },
+    { "path": "openspec/changes/tiktok-download-scheduler/design.md", "sha256": "08b28bbe603b1e671ebbcdaaa313b72337d9db8f490b13dc8ce47fe4fa19375f" },
+    { "path": "openspec/changes/tiktok-download-scheduler/tasks.md", "sha256": "b3b01c95373d4a3665d6d3c40752fcaab14c2bbc42fb219380bf3b16ee734f22" },
+    { "path": "openspec/changes/tiktok-download-scheduler/specs/tiktok-download-scheduler/spec.md", "sha256": "b96f34daad97f1554009b93e8b00b8c2fdb6eb57fa156323ddf94b5c34de2fc9" }
+  ]
+}

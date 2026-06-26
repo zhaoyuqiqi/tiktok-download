@@ -1,0 +1,14 @@
+{
+  "name": "tiktok-downloader",
+  "module": "src/index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@fission-ai/openspec": "^1.4.1"
+  }
+}
