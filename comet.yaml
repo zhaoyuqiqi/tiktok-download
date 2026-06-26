@@ -1,0 +1,2 @@
+build_command: bunx tsc --noEmit
+verify_command: bun test

@@ -18,7 +18,6 @@
 (注:tasks 8.1/8.2 单元测试随 Task 3-7 的 TDD 测试一并覆盖)
 
 ## 当前状态
-- 当前 task: Task 1 (核心类型定义)
-- 阶段: implementing
-- 审查-修复轮次: 0
-- 已完成: 无
+- 全部 9 个 plan 任务完成,32 单测通过,tsc 干净
+- 最终轻量审查 APPROVED;I-1/M-2/M-1 已修复,复查 APPROVED
+- 阶段: done
