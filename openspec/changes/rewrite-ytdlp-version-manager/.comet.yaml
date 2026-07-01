@@ -1,12 +1,12 @@
 workflow: full
 phase: build
 context_compression: off
-build_mode: null
-build_pause: plan-ready
-subagent_dispatch: null
-tdd_mode: null
-review_mode: off
-isolation: null
+build_mode: subagent-driven-development
+build_pause: null
+subagent_dispatch: confirmed
+tdd_mode: tdd
+review_mode: standard
+isolation: branch
 verify_mode: null
 auto_transition: true
 base_ref: 932cfa4b4e1cacdc3bbc093a844fccc70cf4f418
@@ -20,3 +20,5 @@ verified_at: null
 archived: false
 handoff_context: openspec/changes/rewrite-ytdlp-version-manager/.comet/handoff/design-context.json
 handoff_hash: fe86fb93178b1abb30f5848bf686a3b94857bb08ff15d71418c85b8a25696c09
+build_command: bun test src/ytdlp-manager/
+verify_command: bun test src/ytdlp-manager/

@@ -139,12 +139,12 @@ test("versionBinName 生成二进制名", () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认 FAIL**
+- [x] **Step 2: 运行测试确认 FAIL**
 
 Run: `bun test src/ytdlp-manager/toolDir.test.ts`
 Expected: FAIL,报错 `Cannot find module './toolDir.ts'` 或导出未定义。
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/ytdlp-manager/toolDir.ts`:
 
@@ -183,12 +183,12 @@ export function versionBinName(version: string): string {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认 PASS**
+- [x] **Step 4: 运行测试确认 PASS**
 
 Run: `bun test src/ytdlp-manager/toolDir.test.ts`
 Expected: PASS(全部 8 个测试通过)。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/ytdlp-manager/toolDir.ts src/ytdlp-manager/toolDir.test.ts
@@ -209,7 +209,7 @@ git commit -m "feat(ytdlp-manager): add toolDir pure-function base"
   - `class YtDlpService { constructor(opts?: { toolDir?: string }); getBinaryPath(): Promise<string>; }`
   - `getBinaryPath()` 行为:`readlink(current)` → 解析目标绝对路径 → 校验目标文件存在 → 返回绝对路径;`current` 缺失或目标不存在 → `throw new Error(...)`,错误信息提示先运行更新任务;全程不发起网络请求。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/ytdlp-manager/ytDlpService.test.ts`:
 
@@ -276,12 +276,12 @@ test("current 存在但目标二进制不存在时抛错", async () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认 FAIL**
+- [x] **Step 2: 运行测试确认 FAIL**
 
 Run: `bun test src/ytdlp-manager/ytDlpService.test.ts`
 Expected: FAIL,`Cannot find module './ytDlpService.ts'`。
 
-- [ ] **Step 3: 写最小实现**
+- [x] **Step 3: 写最小实现**
 
 创建 `src/ytdlp-manager/ytDlpService.ts`:
 
@@ -318,12 +318,12 @@ export class YtDlpService {
 }
 ```
 
-- [ ] **Step 4: 运行测试确认 PASS**
+- [x] **Step 4: 运行测试确认 PASS**
 
 Run: `bun test src/ytdlp-manager/ytDlpService.test.ts`
 Expected: PASS(3 个测试通过)。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/ytdlp-manager/ytDlpService.ts src/ytdlp-manager/ytDlpService.test.ts
@@ -349,7 +349,7 @@ git commit -m "feat(ytdlp-manager): add runtime YtDlpService resolving current s
     - `interface ProcessRunner { run(args: string[]): Promise<ProcessResult>; runStream(args: string[]): ProcessStream; }`(`run` 签名不变)。
   - `src/ytdlp-manager/runner.ts`:`class YtDlpRunner implements ProcessRunner`,`constructor(private readonly binPath: string)`(**无默认值**),`run` 用 `child_process.spawn` 收集 chunk 于 `close` 组装 `ProcessResult`,`runStream` 同步 spawn 后返回 `{ stdout, stderr, exited }`。
 
-- [ ] **Step 1: 扩展 `src/types.ts`**
+- [x] **Step 1: 扩展 `src/types.ts`**
 
 在文件顶部加导入,并替换 `ProcessRunner`。将现有 27-29 行:
 
@@ -380,7 +380,7 @@ export interface ProcessRunner {
 import type { Readable } from "node:stream";
 ```
 
-- [ ] **Step 2: 写失败测试**
+- [x] **Step 2: 写失败测试**
 
 创建 `src/ytdlp-manager/runner.test.ts`。测试用一个带 shebang 的假可执行脚本,按参数产出确定的 stdout/stderr/退出码:
 
@@ -493,12 +493,12 @@ test("runStream 原样透传参数(含 --proxy)", async () => {
 });
 ```
 
-- [ ] **Step 3: 运行测试确认 FAIL**
+- [x] **Step 3: 运行测试确认 FAIL**
 
 Run: `bun test src/ytdlp-manager/runner.test.ts`
 Expected: FAIL,`runStream` 未定义 / 类型不匹配(旧 runner 无 `runStream`,构造函数仍有默认值)。
 
-- [ ] **Step 4: 重写 `src/ytdlp-manager/runner.ts`**
+- [x] **Step 4: 重写 `src/ytdlp-manager/runner.ts`**
 
 完整替换为:
 
@@ -547,12 +547,12 @@ export class YtDlpRunner implements ProcessRunner {
 }
 ```
 
-- [ ] **Step 5: 运行测试确认 PASS**
+- [x] **Step 5: 运行测试确认 PASS**
 
 Run: `bun test src/ytdlp-manager/runner.test.ts`
 Expected: PASS(6 个测试通过)。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/types.ts src/ytdlp-manager/runner.ts src/ytdlp-manager/runner.test.ts
@@ -580,7 +580,7 @@ git commit -m "feat(ytdlp-manager): rewrite runner on child_process with buffere
 
 **proxy 透传实现说明:** Bun 的 `fetch` 支持 `{ proxy: string }` 选项。`updateYtDlp` 在每次 `fetchImpl(url, init)` 时,若 `opts.proxy` 有值,则把 `proxy` 放进 init 对象一并传入。测试用注入的 `fetchImpl` 断言收到的第二参数 `init.proxy` 等于给定值。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `src/ytdlp-manager/updater.test.ts`(mock 结构复用旧 `ytDlpManager.test.ts` 的 `MockResponse`/`makeFetchMock`,并扩展记录 `init.proxy`):
 
@@ -752,12 +752,12 @@ test("proxy 透传给所有 fetch 调用", async () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认 FAIL**
+- [x] **Step 2: 运行测试确认 FAIL**
 
 Run: `bun test src/ytdlp-manager/updater.test.ts`
 Expected: FAIL,`Cannot find module './updater.ts'`。
 
-- [ ] **Step 3: 写 `src/ytdlp-manager/updater.ts` 实现**
+- [x] **Step 3: 写 `src/ytdlp-manager/updater.ts` 实现**
 
 复用旧算法(SHA256 解析、平台资产选择、清理保留两版),把网络调用统一走 `withProxy` 辅助并透传 proxy,路径工具改用 `./toolDir.ts`:
 
@@ -938,12 +938,12 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
 }
 ```
 
-- [ ] **Step 4: 运行测试确认 PASS**
+- [x] **Step 4: 运行测试确认 PASS**
 
 Run: `bun test src/ytdlp-manager/updater.test.ts`
 Expected: PASS(4 个测试通过)。
 
-- [ ] **Step 5: 写 cron 入口 `src/ytdlp-manager/update.ts`**
+- [x] **Step 5: 写 cron 入口 `src/ytdlp-manager/update.ts`**
 
 ```ts
 import { updateYtDlp } from "./updater.ts";
@@ -974,12 +974,12 @@ main().catch((err) => {
 });
 ```
 
-- [ ] **Step 6: 手动 smoke 校验入口可解析(不联网)**
+- [x] **Step 6: 手动 smoke 校验入口可解析(不联网)**
 
 Run: `bun run src/ytdlp-manager/update.ts --proxy`
 Expected: 打印 `--proxy 需要一个 URL 参数` 并以退出码 1 结束(验证参数解析与失败退出路径;正常联网更新由 CI/生产 cron 触发,不在本地必测范围)。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add src/ytdlp-manager/updater.ts src/ytdlp-manager/update.ts src/ytdlp-manager/updater.test.ts
@@ -1001,20 +1001,20 @@ git commit -m "feat(ytdlp-manager): add networked updateYtDlp + cron update entr
 - Consumes: 前四个任务产出的模块。
 - Produces: 无新代码接口(清理 + 文档 + 验证)。
 
-- [ ] **Step 1: 删除旧文件**
+- [x] **Step 1: 删除旧文件**
 
 ```bash
 git rm src/ytdlp-manager/ytDlpManager.ts src/ytdlp-manager/ytDlpManager.test.ts
 ```
 
-- [ ] **Step 2: 确认无残留引用(index.ts 除外,属已知超范围)**
+- [x] **Step 2: 确认无残留引用(index.ts 除外,属已知超范围)**
 
 Run: `bun test src/ytdlp-manager/`
 Expected: PASS。toolDir / ytDlpService / runner / updater 四套测试全部通过,无对 `ytDlpManager.ts` 的引用报错。
 
 > 说明:`src/index.ts` 仍引用旧 `ensureYtDlp` 与 `new YtDlpRunner()` 默认值,会导致**整仓**类型/构建失败——这是设计文档 Risks 已接受的已知项(用户后续重构调用方)。本计划验证以 **ytdlp-manager 模块自身测试**为准,不跑整仓 build。
 
-- [ ] **Step 3: 补充 README(cron 更新命令 + 首次初始化)**
+- [x] **Step 3: 补充 README(cron 更新命令 + 首次初始化)**
 
 在 `README.md` 中新增一节(标题与措辞可按现有 README 风格微调,内容需包含以下命令):
 
@@ -1042,12 +1042,12 @@ yt-dlp 二进制由独立工具目录托管(默认 `/opt/yt-dlp`,Windows 默认 
 更新成功切换 `current` 后仅保留最近两个版本;SHA256 校验失败或网络失败时不切换 `current` 并以非 0 状态码退出。
 ```
 
-- [ ] **Step 4: 模块级全量验证**
+- [x] **Step 4: 模块级全量验证**
 
 Run: `bun test src/ytdlp-manager/`
 Expected: PASS(toolDir 8 + ytDlpService 3 + runner 6 + updater 4 = 21 个测试全部通过)。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add -A src/ytdlp-manager/ README.md

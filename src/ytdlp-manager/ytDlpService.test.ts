@@ -26,10 +26,10 @@ test("current 可用时返回绝对二进制路径且不联网", async () => {
 
   const originalFetch = globalThis.fetch;
   let fetchCalled = false;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = ((async () => {
     fetchCalled = true;
     throw new Error("不应联网");
-  }) as typeof fetch;
+  }) as unknown) as typeof fetch;
 
   try {
     const service = new YtDlpService({ toolDir: root });
