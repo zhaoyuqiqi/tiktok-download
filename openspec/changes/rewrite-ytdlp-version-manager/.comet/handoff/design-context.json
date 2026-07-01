@@ -1,0 +1,15 @@
+{
+  "change": "rewrite-ytdlp-version-manager",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "fe86fb93178b1abb30f5848bf686a3b94857bb08ff15d71418c85b8a25696c09",
+  "files": [
+    { "path": "openspec/changes/rewrite-ytdlp-version-manager/proposal.md", "sha256": "5bf00a34157e84beed0f35398b01bcd50bbf831903776e795f519f823822273b" },
+    { "path": "openspec/changes/rewrite-ytdlp-version-manager/design.md", "sha256": "c72e1f0450d01d395744e04ebd2ebb052d3ae86bd964745beac95550d4cce650" },
+    { "path": "openspec/changes/rewrite-ytdlp-version-manager/tasks.md", "sha256": "1504ac0aed391a7bd2c4616d594329f074c56c4d36d9062c2d9dce3b8cc0402f" },
+    { "path": "openspec/changes/rewrite-ytdlp-version-manager/specs/tiktok-download-scheduler/spec.md", "sha256": "6ef9cff57ff73174ef6cb61adb5b0457518e63e448484ff90e2088b7f4172a19" },
+    { "path": "openspec/changes/rewrite-ytdlp-version-manager/specs/ytdlp-version-manager/spec.md", "sha256": "25c4123be3d29d4a6fa6bda861d3918af73308ee4098448b4752995815740225" }
+  ]
+}

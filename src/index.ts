@@ -1,8 +1,9 @@
 import type { Config, Task, VideoInfo } from "./types.ts";
-import { YtDlpRunner, checkYtDlpAvailable } from "./execution/runner.ts";
+import { YtDlpRunner } from "./ytdlp-manager/runner.ts";
+import { ensureYtDlp } from "./ytdlp-manager/ytDlpManager.ts";
 import { parse } from "./parsing/parser.ts";
 import { createTask, TaskQueue } from "./scheduling/task.ts";
-import { download } from "./execution/worker.ts";
+import { download } from "./ytdlp-manager/worker.ts";
 import { runScheduler } from "./scheduling/scheduler.ts";
 import { NoopUploader } from "./upload/uploader.ts";
 
@@ -64,12 +65,20 @@ export async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (!checkYtDlpAvailable()) {
-    console.error("错误: 未在 PATH 中找到 yt-dlp,请先安装 yt-dlp 后重试。");
+  let ytDlp;
+  try {
+    ytDlp = await ensureYtDlp({ toolDir: process.env.YT_DLP_TOOL_DIR });
+    if (ytDlp.updated) {
+      console.log(`yt-dlp 已升级到 ${ytDlp.latestVersion}`);
+    } else {
+      console.log(`yt-dlp 版本已是最新: ${ytDlp.latestVersion}`);
+    }
+  } catch (err) {
+    console.error("初始化 yt-dlp 失败:", (err as Error).message);
     process.exit(1);
   }
 
-  const runner = new YtDlpRunner();
+  const runner = new YtDlpRunner(ytDlp.currentPath);
 
   let videos: VideoInfo[];
   try {
