@@ -22,6 +22,6 @@
 
 ## 5. 清理与验证
 
-- [ ] 5.1 删除旧 `ytDlpManager.ts` 及其测试(能力已迁移到 service/updater)
-- [ ] 5.2 更新 README,补充 cron 更新命令与首次初始化步骤
-- [ ] 5.3 运行 `bun test src/ytdlp-manager/` 模块级验证通过
+- [x] 5.1 删除旧 `ytDlpManager.ts` 及其测试(能力已迁移到 service/updater)
+- [x] 5.2 更新 README,补充 cron 更新命令与首次初始化步骤
+- [x] 5.3 运行 `bun test src/ytdlp-manager/` 模块级验证通过

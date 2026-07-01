@@ -40,7 +40,7 @@ base-ref: 932cfa4b4e1cacdc3bbc093a844fccc70cf4f418
 - [x] Task 2 — YtDlpService(运行时,不联网)
 - [x] Task 3 — types 扩展 + runner 重写(run + runStream)
 - [x] Task 4 — updater(联网)+ update.ts(cron 入口)
-- [ ] Task 5 — 删除旧实现 + README + 模块级验证
+- [x] Task 5 — 删除旧实现 + README + 模块级验证
 
 ## 文件结构
 
