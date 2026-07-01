@@ -1,3 +1,5 @@
+import type { Readable } from "node:stream";
+
 export type TaskStatus = "pending" | "running" | "success" | "failed";
 
 export interface VideoInfo {
@@ -24,8 +26,15 @@ export interface ProcessResult {
   stderr: string;
 }
 
+export interface ProcessStream {
+  stdout: Readable;
+  stderr: Readable;
+  exited: Promise<number>;
+}
+
 export interface ProcessRunner {
   run(args: string[]): Promise<ProcessResult>;
+  runStream(args: string[]): ProcessStream;
 }
 
 export interface Config {

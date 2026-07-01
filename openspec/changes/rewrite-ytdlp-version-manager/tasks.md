@@ -16,9 +16,9 @@
 
 ## 4. Runner 后端切换与流式输出
 
-- [ ] 4.1 在 `src/types.ts` 扩展 `ProcessRunner`:新增流式方法(如 `runStream(args): ProcessStream`),定义 `ProcessStream`(`stdout`/`stderr` 为 Node `Readable`,`exited: Promise<number>`);`run` 缓冲签名保持不变
-- [ ] 4.2 编写 runner 测试:缓冲 `run` 行为(切 child_process 后 parse/download 仍通过);流式 `runStream` 输出 `yt-dlp -o -` 内容并可获取退出码;proxy 透传
-- [ ] 4.3 重写 `runner.ts`:spawn 后端整体改为 `node:child_process.spawn`,实现缓冲 `run` 与流式 `runStream`;移除硬编码 `"yt-dlp"` 默认值,二进制路径由调用方(经 YtDlpService)提供
+- [x] 4.1 在 `src/types.ts` 扩展 `ProcessRunner`:新增流式方法(如 `runStream(args): ProcessStream`),定义 `ProcessStream`(`stdout`/`stderr` 为 Node `Readable`,`exited: Promise<number>`);`run` 缓冲签名保持不变
+- [x] 4.2 编写 runner 测试:缓冲 `run` 行为(切 child_process 后 parse/download 仍通过);流式 `runStream` 输出 `yt-dlp -o -` 内容并可获取退出码;proxy 透传
+- [x] 4.3 重写 `runner.ts`:spawn 后端整体改为 `node:child_process.spawn`,实现缓冲 `run` 与流式 `runStream`;移除硬编码 `"yt-dlp"` 默认值,二进制路径由调用方(经 YtDlpService)提供
 
 ## 5. 清理与验证
 
