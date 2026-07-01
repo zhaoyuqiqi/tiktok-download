@@ -10,9 +10,9 @@
 
 ## 3. 更新入口(cron / 联网)
 
-- [ ] 3.1 编写 `updater` 测试(注入 `fetchImpl`):已是最新不下载;有新版下载→SHA256→chmod 0755→切换 current;SHA256 失败不切换;proxy 参数透传;仅保留最近两个版本
-- [ ] 3.2 实现 `updater.ts`(fetch release、平台资产选择、SHA256 校验、chmod、切换 current、清理旧版本、支持 proxy)
-- [ ] 3.3 实现 `update.ts` cron 可执行入口(解析 `--proxy` 并调用 updater,失败非 0 退出)
+- [x] 3.1 编写 `updater` 测试(注入 `fetchImpl`):已是最新不下载;有新版下载→SHA256→chmod 0755→切换 current;SHA256 失败不切换;proxy 参数透传;仅保留最近两个版本
+- [x] 3.2 实现 `updater.ts`(fetch release、平台资产选择、SHA256 校验、chmod、切换 current、清理旧版本、支持 proxy)
+- [x] 3.3 实现 `update.ts` cron 可执行入口(解析 `--proxy` 并调用 updater,失败非 0 退出)
 
 ## 4. Runner 后端切换与流式输出
 

@@ -3,8 +3,8 @@
 - Change: rewrite-ytdlp-version-manager
 - Review mode: standard
 - TDD mode: tdd
-- Current plan task: `Task 4 — updater(联网)+ update.ts(cron 入口)`
-- Current openspec task: `3.1 编写 updater 测试...` / `3.2 实现 updater.ts...` / `3.3 实现 update.ts cron 可执行入口...`
+- Current plan task: `Task 5 — 删除旧实现 + README + 模块级验证`
+- Current openspec task: `5.1 删除旧 ytDlpManager.ts 及其测试(能力已迁移到 service/updater)` / `5.2 更新 README,补充 cron 更新命令与首次初始化步骤` / `5.3 运行 bun test src/ytdlp-manager/ 模块级验证通过`
 - Stage: implementing
 - Implementer commit: pending
 - Changed files: pending
