@@ -25,5 +25,6 @@
 - [x] 5.1 删除旧 `ytDlpManager.ts` 及其测试(能力已迁移到 service/updater)
 - [x] 5.2 更新 README,补充 cron 更新命令与首次初始化步骤
 - [x] 5.3 运行 `bun test src/ytdlp-manager/` 模块级验证通过
+- [x] 5.4 将默认工具目录调整为当前用户可写目录，并补充对应测试/README/设计说明
 
 <!-- final review accepted: `src/index.ts` remains out of scope by explicit user decision; caller wiring will be refactored separately by the user. -->

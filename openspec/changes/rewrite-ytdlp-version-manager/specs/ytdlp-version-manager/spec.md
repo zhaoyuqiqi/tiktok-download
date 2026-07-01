@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: 独立工具目录与 current 软链接
-系统 SHALL 在独立于项目源码的工具目录(默认 `/opt/yt-dlp`,Windows 默认 `C:\opt\yt-dlp`,可通过环境变量覆盖)中维护 yt-dlp 二进制。每个版本 SHALL 以 `yt-dlp-<version>` 命名独立保存,`current` SHALL 为指向某个具体版本二进制的软链接。系统 SHALL NOT 使用 PATH 中的全局 yt-dlp,也 SHALL NOT 将二进制存放在项目目录内。
+系统 SHALL 在独立于项目源码的工具目录中维护 yt-dlp 二进制。默认路径 SHALL 使用当前用户可写目录：macOS 为 `~/Library/Application Support/tiktok-downloader/yt-dlp`，Linux 为 `~/.local/share/tiktok-downloader/yt-dlp`，Windows 为 `%LOCALAPPDATA%\\tiktok-downloader\\yt-dlp`；仍可通过环境变量覆盖。 每个版本 SHALL 以 `yt-dlp-<version>` 命名独立保存,`current` SHALL 为指向某个具体版本二进制的软链接。系统 SHALL NOT 使用 PATH 中的全局 yt-dlp,也 SHALL NOT 将二进制存放在项目目录内。
 
 #### Scenario: current 指向具体版本
 - **WHEN** 工具目录中存在 `yt-dlp-2026.06.28` 且 `current` 软链接指向它

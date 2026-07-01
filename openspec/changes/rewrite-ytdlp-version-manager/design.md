@@ -25,7 +25,7 @@
 - **理由**:运行时代码不再依赖网络模块,天然避免启动联网失败;职责单一便于测试。备选(保留单一 `ensureYtDlp` 加开关)会继续耦合两种失败模式,被否决。
 
 ### D2: YtDlpService 接口
-- `new YtDlpService({ toolDir? })`,`toolDir` 默认按平台解析(`/opt/yt-dlp`),可经环境变量覆盖。
+- `new YtDlpService({ toolDir? })`,`toolDir` 默认按平台解析为当前用户可写目录(macOS: `~/Library/Application Support/tiktok-downloader/yt-dlp`; Linux: `~/.local/share/tiktok-downloader/yt-dlp`; Windows: `%LOCALAPPDATA%\\tiktok-downloader\\yt-dlp`),并可经环境变量覆盖。
 - `async getBinaryPath(): Promise<string>` — 解析 `current` 软链接目标,校验存在;缺失/不可解析时抛明确错误(提示先运行更新任务)。异步因需 `fs` 检查软链接与文件存在。
 - **理由**:方法级异步、无网络;错误信息引导用户运行 cron 更新。备选同步 API 需 `existsSync`,与其余 async I/O 风格不一致,被否决。
 

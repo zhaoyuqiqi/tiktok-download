@@ -14,7 +14,7 @@ bun install
 
 ## yt-dlp 版本管理
 
-yt-dlp 二进制由独立工具目录托管(默认 `/opt/yt-dlp`, Windows 默认 `C:\opt\yt-dlp`; 可用环境变量 `YT_DLP_TOOL_DIR` 覆盖)。运行时通过 `YtDlpService` 解析 `current` 软链接获取二进制路径, 不联网。
+yt-dlp 二进制由独立工具目录托管(默认使用当前用户可写目录: macOS 为 `~/Library/Application Support/tiktok-downloader/yt-dlp`, Linux 为 `~/.local/share/tiktok-downloader/yt-dlp`, Windows 为 `%LOCALAPPDATA%\tiktok-downloader\yt-dlp`; 可用环境变量 `YT_DLP_TOOL_DIR` 覆盖)。运行时通过 `YtDlpService` 解析 `current` 软链接获取二进制路径, 不联网。
 
 ### 首次初始化 / 手动更新
 

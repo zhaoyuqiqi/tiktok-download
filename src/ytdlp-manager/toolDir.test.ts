@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import {
   currentLinkPath,
   parseVersionFromTarget,
@@ -38,7 +39,13 @@ test("resolveToolDir 空白参数回退到环境变量/默认", () => {
 });
 
 test("resolveToolDir 无参数无环境变量时按平台给默认值", () => {
-  const expected = process.platform === "win32" ? "C:\\opt\\yt-dlp" : "/opt/yt-dlp";
+  const expected =
+    process.platform === "darwin"
+      ? join(homedir(), "Library", "Application Support", "tiktok-downloader", "yt-dlp")
+      : process.platform === "win32"
+        ? join(process.env.LOCALAPPDATA ?? "C:\\Users\\Default\\AppData\\Local", "tiktok-downloader", "yt-dlp")
+        : join(homedir(), ".local", "share", "tiktok-downloader", "yt-dlp");
+
   expect(resolveToolDir()).toBe(expected);
 });
 
