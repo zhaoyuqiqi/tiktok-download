@@ -127,6 +127,7 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
   await mkdir(toolDir, { recursive: true });
 
   const localVersion = await readCurrentVersion(toolDir);
+  
   const releaseResp = await fetchImpl(
     LATEST_RELEASE_API,
     withProxy(opts.proxy, {
@@ -135,7 +136,7 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
         "User-Agent": "tiktok-downloader",
       },
     }),
-  );
+  );  
   if (!releaseResp.ok) {
     throw new Error(`获取 yt-dlp 最新版本失败: HTTP ${releaseResp.status}`);
   }
@@ -148,7 +149,10 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
   const latestVersion = data.tag_name;
   const latestName = versionBinName(latestVersion);
   const latestPath = join(toolDir, latestName);
-  if (localVersion === latestVersion && (await fileExists(latestPath))) {
+  if (await fileExists(latestPath)) {
+    if (localVersion !== latestVersion) {
+      await switchCurrentSymlink(toolDir, latestName);
+    }
     return { updated: false, latestVersion, localVersion };
   }
 
@@ -181,7 +185,7 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
   if (!checksumResp.ok) {
     throw new Error(`下载 SHA256 校验文件失败: HTTP ${checksumResp.status}`);
   }
-
+  
   const [binaryBuffer, checksumText] = await Promise.all([binaryResp.arrayBuffer(), checksumResp.text()]);
   const expectedHash = parseChecksumMap(checksumText).get(assetName);
   if (expectedHash === undefined) {

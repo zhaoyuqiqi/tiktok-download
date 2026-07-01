@@ -43,8 +43,16 @@ test("resolveToolDir 无参数无环境变量时按平台给默认值", () => {
     process.platform === "darwin"
       ? join(homedir(), "Library", "Application Support", "tiktok-downloader", "yt-dlp")
       : process.platform === "win32"
-        ? join(process.env.LOCALAPPDATA ?? "C:\\Users\\Default\\AppData\\Local", "tiktok-downloader", "yt-dlp")
-        : join(homedir(), ".local", "share", "tiktok-downloader", "yt-dlp");
+        ? join(
+            process.env.LOCALAPPDATA ?? process.env.APPDATA ?? join(homedir(), "AppData", "Local"),
+            "tiktok-downloader",
+            "yt-dlp",
+          )
+        : join(
+            process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"),
+            "tiktok-downloader",
+            "yt-dlp",
+          );
 
   expect(resolveToolDir()).toBe(expected);
 });

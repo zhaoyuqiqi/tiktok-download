@@ -33,6 +33,10 @@
 - **WHEN** 更新任务运行,GitHub 最新版本与本地 `current` 版本相同且该二进制存在
 - **THEN** 系统不下载任何文件,`current` 保持不变
 
+#### Scenario: current 缺失但最新版二进制已存在时自愈
+- **WHEN** 工具目录中已存在与 GitHub 最新版本匹配的版本二进制,但 `current` 软链接缺失
+- **THEN** 系统不重新下载二进制,而是重建 `current` 指向该现有版本二进制,并继续复用现有版本
+
 #### Scenario: 有新版本时下载并切换
 - **WHEN** 更新任务运行,GitHub 最新版本高于/不同于本地 `current` 版本
 - **THEN** 系统下载新版本二进制,SHA256 校验通过后 `chmod` 为 0755,并将 `current` 切换指向新版本二进制

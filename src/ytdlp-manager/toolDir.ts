@@ -4,17 +4,27 @@ import { basename, join } from "node:path";
 const CURRENT_LINK_NAME = "current";
 const BIN_PREFIX = "yt-dlp-";
 const ENV_TOOL_DIR = "YT_DLP_TOOL_DIR";
+const APP_NAME = "tiktok-downloader";
 
 function defaultToolDir(): string {
   if (process.platform === "darwin") {
-    return join(homedir(), "Library", "Application Support", "tiktok-downloader", "yt-dlp");
+    return join(homedir(), "Library", "Application Support", APP_NAME, "yt-dlp");
   }
 
   if (process.platform === "win32") {
-    return join(process.env.LOCALAPPDATA ?? "C:\\Users\\Default\\AppData\\Local", "tiktok-downloader", "yt-dlp");
+    const base =
+      process.env.LOCALAPPDATA ??
+      process.env.APPDATA ??
+      join(homedir(), "AppData", "Local");
+
+    return join(base, APP_NAME, "yt-dlp");
   }
 
-  return join(homedir(), ".local", "share", "tiktok-downloader", "yt-dlp");
+  const base =
+    process.env.XDG_DATA_HOME ??
+    join(homedir(), ".local", "share");
+
+  return join(base, APP_NAME, "yt-dlp");
 }
 
 export function resolveToolDir(rawToolDir?: string): string {

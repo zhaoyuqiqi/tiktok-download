@@ -110,6 +110,21 @@ test("已是最新版本时不下载", async () => {
   expect(calls.map((call) => call.url)).toEqual([API]);
 });
 
+test("已有最新版本文件但缺少 current 时重建软链接且不下载", async () => {
+  const root = await tempToolDir();
+  const version = "2026.06.28";
+  await writeFile(join(root, `yt-dlp-${version}`), "existing");
+
+  const calls: FetchCall[] = [];
+  const fetchMock = makeFetchMock({ [API]: { ok: true, bodyText: releaseBody(version) } }, calls);
+
+  const result = await updateYtDlp({ toolDir: root, platform: "darwin", fetchImpl: fetchMock });
+  expect(result.updated).toBe(false);
+  expect(result.localVersion).toBeUndefined();
+  expect(await readlink(join(root, "current"))).toBe(`yt-dlp-${version}`);
+  expect(calls.map((call) => call.url)).toEqual([API]);
+});
+
 test("有新版本时下载+SHA256+chmod 0755+切换 current+只留两版", async () => {
   const root = await tempToolDir();
   await writeFile(join(root, "yt-dlp-2026.06.10"), "old1");
