@@ -1,7 +1,7 @@
 ## 1. 工具目录与路径解析
 
 - [x] 1.1 实现工具目录解析(默认 `/opt/yt-dlp` / Windows `C:\opt\yt-dlp`,环境变量覆盖)与 `current`/版本名解析工具(供 service 与 updater 复用)
-- [ ] 1.2 为路径/版本名解析编写单元测试(current 指向解析、环境变量覆盖)
+- [x] 1.2 为路径/版本名解析编写单元测试(current 指向解析、环境变量覆盖)
 
 ## 2. YtDlpService(运行时)
 
@@ -25,3 +25,5 @@
 - [x] 5.1 删除旧 `ytDlpManager.ts` 及其测试(能力已迁移到 service/updater)
 - [x] 5.2 更新 README,补充 cron 更新命令与首次初始化步骤
 - [x] 5.3 运行 `bun test src/ytdlp-manager/` 模块级验证通过
+
+<!-- final review accepted: `src/index.ts` remains out of scope by explicit user decision; caller wiring will be refactored separately by the user. -->
