@@ -5,8 +5,8 @@
 
 ## 2. YtDlpService(运行时)
 
-- [ ] 2.1 编写 `YtDlpService.getBinaryPath()` 测试:current 可用返回路径且不联网;current 缺失抛明确错误
-- [ ] 2.2 实现 `YtDlpService` 类(解析 current、校验存在、无网络),导出供调用方使用
+- [x] 2.1 编写 `YtDlpService.getBinaryPath()` 测试:current 可用返回路径且不联网;current 缺失抛明确错误
+- [x] 2.2 实现 `YtDlpService` 类(解析 current、校验存在、无网络),导出供调用方使用
 
 ## 3. 更新入口(cron / 联网)
 
