@@ -17,7 +17,7 @@ verification_report: docs/superpowers/reports/2026-07-01-rewrite-ytdlp-version-m
 branch_status: handled
 created_at: 2026-07-01
 verified_at: 2026-07-01
-archived: false
+archived: true
 handoff_context: openspec/changes/rewrite-ytdlp-version-manager/.comet/handoff/design-context.json
 handoff_hash: fe86fb93178b1abb30f5848bf686a3b94857bb08ff15d71418c85b8a25696c09
 build_command: bun test src/ytdlp-manager/

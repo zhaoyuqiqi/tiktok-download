@@ -1,0 +1,16 @@
+{
+  "change": "serve-tiktok-download-worker",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "0094c01fa1179155eca6249f64ae5981adad0cfc5daaa6aba3899b14ea0c4770",
+  "files": [
+    { "path": "openspec/changes/serve-tiktok-download-worker/proposal.md", "sha256": "a0e3d1c61add3c7e17da978f9a323cdb596b128c1bb3958adb60c9162ba57fbf" },
+    { "path": "openspec/changes/serve-tiktok-download-worker/design.md", "sha256": "97e30a4a3bf6e4af7da587c4e371382351e49b76947b82332ea8fc3b0e0c6674" },
+    { "path": "openspec/changes/serve-tiktok-download-worker/tasks.md", "sha256": "302a10e934779f3179bf0d3fb28d86d1cb157c76c550b2c113ca1c8a81335314" },
+    { "path": "openspec/changes/serve-tiktok-download-worker/specs/tiktok-download-scheduler/spec.md", "sha256": "c2f9da6c4448fa6f6b224e4e49a4e1090af0e1d14385adbee5c58950f694de9d" },
+    { "path": "openspec/changes/serve-tiktok-download-worker/specs/tiktok-fetch-pipeline/spec.md", "sha256": "4dbd5a8d9f8c013ebeafccd6282e201adb0022d9d25a91bcf941dd460ec951fe" },
+    { "path": "openspec/changes/serve-tiktok-download-worker/specs/tiktok-fetch-service/spec.md", "sha256": "80b5834fb2711afc7a33c223f433cd21a60d4eecf3a77e42836a72b633ae4595" }
+  ]
+}

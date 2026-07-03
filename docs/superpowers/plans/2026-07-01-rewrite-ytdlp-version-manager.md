@@ -2,6 +2,7 @@
 change: rewrite-ytdlp-version-manager
 design-doc: docs/superpowers/specs/2026-07-01-rewrite-ytdlp-version-manager-design.md
 base-ref: 932cfa4b4e1cacdc3bbc093a844fccc70cf4f418
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 # 重写 yt-dlp 版本管理器 实现计划
@@ -32,6 +33,7 @@ base-ref: 932cfa4b4e1cacdc3bbc093a844fccc70cf4f418
 - 不引入结构化日志;cron 失败即 `console.error` + `process.exit(1)`,与项目其余 `console` 用法一致(D5)。
 - 复用旧 `ytDlpManager.ts` 中已测的下载/SHA256 解析/清理算法(D7),重写聚焦结构解耦而非算法重造。
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ## 执行清单
@@ -60,6 +62,7 @@ base-ref: 932cfa4b4e1cacdc3bbc093a844fccc70cf4f418
 
 依赖顺序:Task 1(toolDir)→ Task 2(YtDlpService)+ Task 4(updater/update)并行可行(都只依赖 toolDir)→ Task 3(types + runner run/runStream)独立于 1/2/4 → Task 5(清理旧文件 + README + 全量验证)最后。
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ### Task 1: toolDir 纯函数底座
@@ -195,6 +198,7 @@ git add src/ytdlp-manager/toolDir.ts src/ytdlp-manager/toolDir.test.ts
 git commit -m "feat(ytdlp-manager): add toolDir pure-function base"
 ```
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ### Task 2: YtDlpService(运行时,不联网)
@@ -330,6 +334,7 @@ git add src/ytdlp-manager/ytDlpService.ts src/ytdlp-manager/ytDlpService.test.ts
 git commit -m "feat(ytdlp-manager): add runtime YtDlpService resolving current symlink"
 ```
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ### Task 3: types 扩展 + runner 重写(run + runStream)
@@ -559,6 +564,7 @@ git add src/types.ts src/ytdlp-manager/runner.ts src/ytdlp-manager/runner.test.t
 git commit -m "feat(ytdlp-manager): rewrite runner on child_process with buffered run + streaming runStream"
 ```
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ### Task 4: updater(联网)+ update.ts(cron 入口)
@@ -986,6 +992,7 @@ git add src/ytdlp-manager/updater.ts src/ytdlp-manager/update.ts src/ytdlp-manag
 git commit -m "feat(ytdlp-manager): add networked updateYtDlp + cron update entrypoint with proxy support"
 ```
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ### Task 5: 删除旧实现 + README + 全量验证
@@ -1054,6 +1061,7 @@ git add -A src/ytdlp-manager/ README.md
 git commit -m "chore(ytdlp-manager): remove old ytDlpManager + document cron update workflow"
 ```
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ## 自审(Self-Review)
@@ -1071,6 +1079,7 @@ git commit -m "chore(ytdlp-manager): remove old ytDlpManager + document cron upd
 
 **3. 类型一致性:** `ProcessStream = { stdout: Readable; stderr: Readable; exited: Promise<number> }` 在 types.ts(Task 3)定义,runner.ts 实现一致;`YtDlpRunner` 构造函数在 Task 3 明确无默认值;`updateYtDlp`/`UpdateOptions`/`UpdateResult` 在 Task 4 定义并被 update.ts 消费,字段名一致;toolDir 四个函数名(`resolveToolDir`/`currentLinkPath`/`parseVersionFromTarget`/`versionBinName`)在 Task 1 定义,Task 2/4 引用一致。
 
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
 ---
 
 ## 执行交接

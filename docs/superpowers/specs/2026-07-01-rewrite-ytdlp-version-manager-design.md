@@ -2,6 +2,8 @@
 comet_change: rewrite-ytdlp-version-manager
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-03-rewrite-ytdlp-version-manager
+status: final
 ---
 
 # Rewrite yt-dlp Version Manager — Technical Design
