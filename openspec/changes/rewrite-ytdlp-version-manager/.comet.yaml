@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 context_compression: off
 build_mode: subagent-driven-development
 build_pause: null
@@ -12,11 +12,11 @@ auto_transition: true
 base_ref: 932cfa4b4e1cacdc3bbc093a844fccc70cf4f418
 design_doc: docs/superpowers/specs/2026-07-01-rewrite-ytdlp-version-manager-design.md
 plan: docs/superpowers/plans/2026-07-01-rewrite-ytdlp-version-manager.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-07-01-rewrite-ytdlp-version-manager-verify.md
 branch_status: handled
 created_at: 2026-07-01
-verified_at: null
+verified_at: 2026-07-01
 archived: false
 handoff_context: openspec/changes/rewrite-ytdlp-version-manager/.comet/handoff/design-context.json
 handoff_hash: fe86fb93178b1abb30f5848bf686a3b94857bb08ff15d71418c85b8a25696c09
