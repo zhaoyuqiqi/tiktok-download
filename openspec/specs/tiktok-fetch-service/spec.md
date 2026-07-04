@@ -15,7 +15,7 @@ TBD - created by archiving change serve-tiktok-download-worker. Update Purpose a
 - **THEN** 服务复用同一抓取流水线执行该账号的抓取
 
 ### Requirement: 主动抓取账号数量上限
-系统 SHALL 支持主动抓取指定账号的帖子。当该账号帖子过多时,系统 SHALL 只处理最近 100 条帖子,并 SHALL 遵守去重规则。
+系统 SHALL 支持主动抓取指定账号的帖子。当该账号帖子过多时,系统 SHALL 只处理最近 100 条帖子,并 SHALL 遵守去重规则。服务入口 SHALL 兼容 `accountId` 与 `starId` 两种触发字段,且至少提供其一。系统内部 SHALL 统一使用账号标识入队,并保持异步受理语义。
 
 #### Scenario: 限制最近 100 条
 - **WHEN** 主动抓取某账号且其帖子数量超过 100
@@ -32,6 +32,14 @@ TBD - created by archiving change serve-tiktok-download-worker. Update Purpose a
 #### Scenario: 主动触发的账号本地不存在
 - **WHEN** 主动触发抓取的账号本地尚未存在于账号名单中
 - **THEN** 系统即时插入一条 active 账号记录并抓取,不依赖名单对账时机
+
+#### Scenario: 兼容 starId 输入
+- **WHEN** 外部通过 HTTP 主动触发时仅提供 `starId`
+- **THEN** 系统将其映射为内部账号标识后入队并受理,返回 `202`
+
+#### Scenario: 缺少可用账号标识
+- **WHEN** 外部通过 HTTP 主动触发时 `accountId` 与 `starId` 都未提供
+- **THEN** 系统返回 `400`,且不入队抓取
 
 ### Requirement: SQLite 持久化去重与游标
 系统 SHALL 使用本地 SQLite 持久化账号调度状态(`accounts`:平台、账号标识、`next_run_at`、`last_post_at`、抓取游标、`active`)与帖子去重记录(`fetched_posts`:平台、帖子 id、状态、重试次数、抓取时间,发布时间可选)。系统 SHALL NOT 在 SQLite 中存储帖子的全量信息(如标题、作者、媒体 URL、清洗后 payload、COS key),这些数据用完即弃或已落在 COS/instar。相同帖子抓取成功后 SHALL NOT 被重复抓取。服务重启后上述状态 SHALL 仍然保留(在 Docker 部署下依赖持久化目录挂载)。

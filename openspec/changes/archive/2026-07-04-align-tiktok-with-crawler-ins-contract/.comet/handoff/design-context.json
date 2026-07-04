@@ -1,0 +1,17 @@
+{
+  "change": "align-tiktok-with-crawler-ins-contract",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "22293e0cc81975ea1ca28a2b5f3b243a6c80f5f7a53056a41efe90b9a6054e47",
+  "files": [
+    { "path": "openspec/changes/align-tiktok-with-crawler-ins-contract/proposal.md", "sha256": "93772529e5528329ceed3e627bf4ac69a43f95509a62e732ad658d035da813a7" },
+    { "path": "openspec/changes/align-tiktok-with-crawler-ins-contract/design.md", "sha256": "8002f150423dbbb3ee7fc73511cefa300b89bcc737352fbbf0c7380a5c900bf6" },
+    { "path": "openspec/changes/align-tiktok-with-crawler-ins-contract/tasks.md", "sha256": "3ae0a2bb678cbfdf7caa6b1e2752659ec38ccbb7c81467ebd79ba6af4d7fa219" },
+    { "path": "openspec/changes/align-tiktok-with-crawler-ins-contract/specs/instar-contract-adapter/spec.md", "sha256": "c4113f52edc5fe9f6e6fc24b5c5236246f3d5d43700a536780554058bd25b9ca" },
+    { "path": "openspec/changes/align-tiktok-with-crawler-ins-contract/specs/tiktok-download-scheduler/spec.md", "sha256": "465706289155513fd713ee144fe97dfb2cbd39798684a5c766ea2c999e06d126" },
+    { "path": "openspec/changes/align-tiktok-with-crawler-ins-contract/specs/tiktok-fetch-pipeline/spec.md", "sha256": "989f0d04390b4f15a8c689df470b01dc42abd23641958baab6851fb4c5bc641e" },
+    { "path": "openspec/changes/align-tiktok-with-crawler-ins-contract/specs/tiktok-fetch-service/spec.md", "sha256": "ecd42dd0803959d07b09c723c16966b9df6755062593a7172f5f42eed0497277" }
+  ]
+}

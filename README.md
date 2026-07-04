@@ -63,6 +63,12 @@ bun run src/index.ts
 | `APP_DATA_DIR` | `./data` | 持久化目录，SQLite 位于 `state.db` |
 | `APP_ACCOUNT_SOURCE_URL` | 空 | 外部账号名单源 URL（配置后才会启用 reconcile 拉取） |
 | `APP_ACCOUNT_SOURCE_AUTH_BEARER` | 空 | 外部名单 Bearer Token |
+| `APP_INSTAR_WEBHOOK_URL` | 空 | 账号抓取完成回调地址（可选，不配置则跳过账号级完成回调） |
+| `APP_INSTAR_WEBHOOK_AUTH_BEARER` | 空 | 账号完成回调 Bearer Token |
+| `APP_INSTAR_POST_WEBHOOK_URL` | 空 | **必填**：帖子抓取成功后逐条同步回调地址（缺失则服务启动报错） |
+| `APP_INSTAR_POST_WEBHOOK_AUTH_BEARER` | 空 | 帖子逐条回调 Bearer Token |
+
+> 帖子级回调说明：同步 payload 现在严格遵循 `crawler-ins` 的 `Post` 契约（`insPostId/starName/fullName/title/isTop/insStarId/publishTime/resources`），且**不再传 `cosKey`**；当视频上传到 COS 后，会将 COS 可访问地址写入 `resources[].url`。平台字段映射集中在 `src/integration/postFormatters/`，后续新增平台可直接新增对应 formatter 文件。
 | `COS_BUCKET` | 空 | COS bucket（预留/兼容） |
 | `COS_REGION` | 空 | COS region（预留/兼容） |
 | `COS_SECRET_ID` | 空 | COS secret id（预留/兼容） |
@@ -87,11 +93,22 @@ APP_DEBUG=1 bun run src/index.ts
 
 主动触发账号抓取（旁路入队，复用同一调度流水线）。
 
-请求体：
+请求体（`accountId` 与 `starId` 二选一，若同时存在优先 `accountId`）：
 
 ```json
 {
-  "accountId": "@alice"
+  "starId": "@alice"
+}
+```
+
+响应（`202 Accepted`）：
+
+```json
+{
+  "accepted": true,
+  "accountId": "@alice",
+  "starId": "@alice",
+  "source": "manual"
 }
 ```
 
@@ -100,7 +117,7 @@ APP_DEBUG=1 bun run src/index.ts
 ```bash
 curl -X POST http://127.0.0.1:3000/fetch \
   -H 'content-type: application/json' \
-  -d '{"accountId":"@alice"}'
+  -d '{"starId":"@alice"}'
 ```
 
 ### `GET /status`
@@ -110,6 +127,40 @@ curl -X POST http://127.0.0.1:3000/fetch \
 - 账号总数 / active / inactive / due
 - 账号列表（含 `nextRunAt`）
 - 去重表累计抓取记录数
+
+## instar 对接契约
+
+### 账号列表接口（tiktok 定时拉取）
+
+当前仅支持 instar 风格：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "list": [
+      { "starId": "@alice" },
+      { "starId": "@bob" }
+    ]
+  }
+}
+```
+
+### 账号完成回调（tiktok -> instar）
+
+当单个账号任务结束时（成功或失败）回调一次：
+
+```json
+{
+  "starId": "@alice",
+  "token": "instar",
+  "status": 1
+}
+```
+
+- `status=1` 表示本次账号任务成功结束
+- `status=0` 表示本次账号任务失败结束
+- 当前版本回调失败**不重试**，仅记录日志
 
 ## Docker 部署（重要）
 

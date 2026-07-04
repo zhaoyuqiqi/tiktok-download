@@ -2,7 +2,13 @@ import { join } from "node:path";
 import COS from "cos-nodejs-sdk-v5";
 import { loadServiceConfig } from "./config.ts";
 import { AccountSourceClient } from "./integration/accountSourceClient.ts";
-import { NoopInstarServerClient } from "./integration/instarServer.ts";
+import {
+  HttpInstarPostSyncClient,
+  HttpInstarServerClient,
+  NoopInstarServerClient,
+  toInstarAccountCompletedPayload,
+  toInstarPostSyncedPayload,
+} from "./integration/instarServer.ts";
 import { debugLog, isDebugEnabled } from "./logging/debugLogger.ts";
 import { runAccountIngest, type MediaPipelineOptions } from "./pipeline/accountIngest.ts";
 import { TikTokAdapter } from "./platforms/tiktokAdapter.ts";
@@ -37,8 +43,31 @@ function createTraceId(accountId: string, source: "due" | "manual"): string {
   return `${Date.now()}-${source}-${accountId}-${rand}`;
 }
 
+export function assertRequiredWebhookEnv(env: NodeJS.ProcessEnv): {
+  accountWebhookUrl: string;
+  accountWebhookBearer: string;
+  postWebhookUrl: string;
+  postWebhookBearer: string;
+} {
+  const accountWebhookUrl = env.APP_INSTAR_WEBHOOK_URL?.trim() ?? "";
+  const accountWebhookBearer = env.APP_INSTAR_WEBHOOK_AUTH_BEARER?.trim() ?? "";
+  const postWebhookUrl = env.APP_INSTAR_POST_WEBHOOK_URL?.trim() ?? "";
+  const postWebhookBearer = env.APP_INSTAR_POST_WEBHOOK_AUTH_BEARER?.trim() ?? "";
+
+  if (postWebhookUrl.length === 0) {
+    throw new Error("APP_INSTAR_POST_WEBHOOK_URL 未配置：该变量为必填，缺失时服务拒绝启动");
+  }
+
+  return {
+    accountWebhookUrl,
+    accountWebhookBearer,
+    postWebhookUrl,
+    postWebhookBearer,
+  };
+}
+
 export async function main(): Promise<void> {
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT ?? 3999);
   const host = process.env.HOST ?? "0.0.0.0";
 
   if (!Number.isFinite(port) || port <= 0) {
@@ -95,8 +124,27 @@ export async function main(): Promise<void> {
     bucket: config.cos.bucket,
     region: config.cos.region,
     keyPrefix: config.cos.keyPrefix,
-    instarClient: new NoopInstarServerClient(),
   };
+
+  const {
+    accountWebhookUrl: instarWebhookUrl,
+    accountWebhookBearer: instarWebhookBearer,
+    postWebhookUrl: instarPostWebhookUrl,
+    postWebhookBearer: instarPostWebhookBearer,
+  } = assertRequiredWebhookEnv(process.env);
+
+  const instarClient =
+    instarWebhookUrl.length > 0
+      ? new HttpInstarServerClient({
+          url: instarWebhookUrl,
+          bearerToken: instarWebhookBearer,
+        })
+      : new NoopInstarServerClient();
+
+  const instarPostSyncClient = new HttpInstarPostSyncClient({
+    url: instarPostWebhookUrl,
+    bearerToken: instarPostWebhookBearer,
+  });
 
   const dueScheduler = new DueScheduler({
     concurrency: config.globalConcurrency,
@@ -107,7 +155,7 @@ export async function main(): Promise<void> {
         limit,
       });
     },
-    async runAccount(accountId, source) {
+    async runAccount(accountId, source, options) {
       const traceId = createTraceId(accountId, source);
       debugLog("run_account.start", {
         traceId,
@@ -126,8 +174,39 @@ export async function main(): Promise<void> {
           adapter,
           media: mediaPipeline,
           proxy: config.proxy,
+          manualLimit: source === "manual" ? options?.limit : undefined,
           traceId,
+          onPostSynced: async (event) => {
+            await instarPostSyncClient.notifyPostSynced(
+              toInstarPostSyncedPayload({
+                platform: event.platform,
+                source: event.source,
+                starId: event.starId,
+                postId: event.postId,
+                sourceUrl: event.sourceUrl,
+                mediaType: event.mediaType,
+                videoUrl: event.videoUrl,
+                thumbnailUrl: event.thumbnailUrl,
+                publishedAt: event.publishedAt,
+                title: event.title,
+                description: event.description,
+                authorHandle: event.authorHandle,
+                rawDetail: event.rawDetail,
+              }),
+            );
+          },
         });
+
+        try {
+          await instarClient.notifyAccountCompleted(toInstarAccountCompletedPayload(accountId, 1));
+        } catch (callbackError) {
+          debugLog("instar.callback.failed", {
+            traceId,
+            accountId,
+            status: 1,
+            error: callbackError instanceof Error ? callbackError.message : String(callbackError),
+          });
+        }
 
         debugLog("run_account.done", {
           traceId,
@@ -137,6 +216,17 @@ export async function main(): Promise<void> {
           result,
         });
       } catch (error) {
+        try {
+          await instarClient.notifyAccountCompleted(toInstarAccountCompletedPayload(accountId, 0));
+        } catch (callbackError) {
+          debugLog("instar.callback.failed", {
+            traceId,
+            accountId,
+            status: 0,
+            error: callbackError instanceof Error ? callbackError.message : String(callbackError),
+          });
+        }
+
         debugLog("run_account.failed", {
           traceId,
           accountId,

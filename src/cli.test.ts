@@ -14,7 +14,7 @@ describe("HTTP 服务入口", () => {
   });
 
   it("POST /fetch 受理主动触发并入队", async () => {
-    const triggerCalls: string[] = [];
+    const triggerCalls: Array<{ accountId: string; limit?: number }> = [];
     const upserts: string[] = [];
 
     const app = createApp({
@@ -38,8 +38,8 @@ describe("HTTP 服务入口", () => {
       },
       scheduler: {
         runningCount: 0,
-        async trigger(accountId) {
-          triggerCalls.push(accountId);
+        async trigger(accountId, options) {
+          triggerCalls.push({ accountId, limit: options?.limit });
         },
       },
     });
@@ -50,14 +50,15 @@ describe("HTTP 服务入口", () => {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ accountId: "@alice" }),
+        body: JSON.stringify({ accountId: "@alice", limit: 3 }),
       }),
     );
 
     const payload = await response.json();
     expect(response.status).toBe(202);
     expect(payload.accepted).toBeTrue();
-    expect(triggerCalls).toEqual(["@alice"]);
+    expect(payload.limit).toBe(3);
+    expect(triggerCalls).toEqual([{ accountId: "@alice", limit: 3 }]);
     expect(upserts).toEqual(["@alice"]);
   });
 

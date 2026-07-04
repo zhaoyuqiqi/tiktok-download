@@ -70,13 +70,17 @@ TBD - created by archiving change serve-tiktok-download-worker. Update Purpose a
 - **THEN** 该帖子标记为最终失败,其余帖子不受影响
 
 ### Requirement: 成功后回传适配层
-系统 SHALL 在帖子抓取并上传成功后,由公共层通过回传适配层输出平台无关的标准化数据用于 instar-server 落库。回传适配层 SHALL 以抽象接口定义,默认提供预留实现;真实 instar-server 接口本次不锁定。回传逻辑 SHALL 与具体平台适配器解耦。回传失败 SHALL NOT 改变帖子已成功抓取的状态。
+系统 SHALL 在账号抓取流程完成后,由公共层通过回传适配层向 instar webhook 回调账号级完成状态。回调负载 SHALL 为 `{ starId, token: "instar", status }`。当账号抓取流程成功完成时 `status` SHALL 为 `1`;当账号抓取流程失败结束时 `status` SHALL 为 `0`。该回调语义 SHALL 与具体平台适配器解耦,并 SHALL NOT 改变帖子级去重与成功状态判定。
 
-#### Scenario: 成功触发回传
-- **WHEN** 一条帖子抓取并上传成功
-- **THEN** 系统调用回传适配层输出该帖子的标准化数据
+#### Scenario: 账号成功时回调 status 1
+- **WHEN** 某账号抓取流程成功完成
+- **THEN** 系统调用回传适配层发送 `{starId, token:"instar", status:1}`
 
-#### Scenario: 回传失败不回滚成功状态
+#### Scenario: 账号失败时回调 status 0
+- **WHEN** 某账号抓取流程最终失败
+- **THEN** 系统调用回传适配层发送 `{starId, token:"instar", status:0}`
+
+#### Scenario: 回调失败不回滚抓取结果
 - **WHEN** 回传适配层调用失败
-- **THEN** 系统记录错误,但该帖子仍视为已成功抓取,不重复抓取
+- **THEN** 系统记录错误,但不改变该账号抓取流程已产生的抓取与去重结果
 

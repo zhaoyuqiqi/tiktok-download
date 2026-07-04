@@ -158,6 +158,39 @@ describe("TikTokAdapter", () => {
     expect(post.sourceUrl).toBe("https://www.tiktok.com/@alice/video/v1");
     expect(post.authorHandle).toBe("alice");
     expect(post.publishedAt).toBe("2025-01-01T00:00:00.000Z");
+    expect(post.mediaType).toBe("video");
+    expect(post.videoExt).toBeUndefined();
+    expect(post.thumbnailUrl).toBeUndefined();
+  });
+
+  it("cleanse 从详情提取 ext 并保留 rawDetail", () => {
+    const adapter = new TikTokAdapter(createRunner({}), { requestDelayRangeMs: [0, 0] });
+    const post = adapter.cleanse(
+      {
+        id: "v2",
+        ext: "webm",
+        uploader_id: "alice",
+        timestamp: 1735689600,
+        webpage_url: "https://www.tiktok.com/@alice/video/v2",
+        duration: 12,
+      },
+      {
+        platform: "tiktok",
+        accountId: "@alice",
+        postId: "v2",
+        url: "https://www.tiktok.com/@alice/video/v2",
+      },
+    );
+
+    expect(post.videoExt).toBe("webm");
+    expect(post.rawDetail).toEqual({
+      id: "v2",
+      ext: "webm",
+      uploader_id: "alice",
+      timestamp: 1735689600,
+      webpage_url: "https://www.tiktok.com/@alice/video/v2",
+      duration: 12,
+    });
   });
 
   it("openMediaStream 使用 -o - 打开媒体流", async () => {

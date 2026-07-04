@@ -44,6 +44,42 @@ function buildDefaultStatus(now: Date): ServiceStatus {
   };
 }
 
+function normalizeAccountIdentifier(body: unknown): string {
+  if (typeof body !== "object" || body === null) {
+    return "";
+  }
+
+  const payload = body as Record<string, unknown>;
+  const accountIdRaw = typeof payload.accountId === "string" ? payload.accountId : undefined;
+  const starIdRaw = typeof payload.starId === "string" ? payload.starId : undefined;
+  return (accountIdRaw ?? starIdRaw ?? "").trim();
+}
+
+function normalizeManualLimit(body: unknown): number | undefined | "invalid" {
+  if (typeof body !== "object" || body === null) {
+    return undefined;
+  }
+
+  const payload = body as Record<string, unknown>;
+  if (!("limit" in payload) || payload.limit === undefined || payload.limit === null) {
+    return undefined;
+  }
+
+  const raw = payload.limit;
+  const parsed =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string" && raw.trim().length > 0
+        ? Number(raw)
+        : Number.NaN;
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+    return "invalid";
+  }
+
+  return parsed;
+}
+
 export function createApp(options: CreateAppOptions = {}) {
   const platform = options.platform ?? "tiktok";
   const now = options.now ?? (() => new Date());
@@ -55,15 +91,17 @@ export function createApp(options: CreateAppOptions = {}) {
       timestamp: now().toISOString(),
     }))
     .post("/fetch", async ({ body, set }) => {
-      const accountIdRaw =
-        typeof body === "object" && body !== null && "accountId" in body
-          ? (body as { accountId?: unknown }).accountId
-          : undefined;
-      const accountId = typeof accountIdRaw === "string" ? accountIdRaw.trim() : "";
+      const accountId = normalizeAccountIdentifier(body);
+      const manualLimit = normalizeManualLimit(body);
 
       if (accountId.length === 0) {
         set.status = 400;
-        return { error: "accountId 不能为空" };
+        return { error: "accountId/starId 不能为空" };
+      }
+
+      if (manualLimit === "invalid") {
+        set.status = 400;
+        return { error: "limit 必须是 1~100 的正整数" };
       }
 
       if (options.repo !== undefined && options.scheduler !== undefined) {
@@ -86,14 +124,18 @@ export function createApp(options: CreateAppOptions = {}) {
           });
         }
 
-        await options.scheduler.trigger(accountId);
+        await options.scheduler.trigger(accountId, {
+          limit: manualLimit,
+        });
       }
 
       set.status = 202;
       return {
         accepted: true,
         accountId,
+        starId: accountId,
         source: "manual",
+        limit: manualLimit ?? 100,
       };
     })
     .get("/status", () => {

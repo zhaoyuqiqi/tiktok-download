@@ -1,10 +1,8 @@
-import type { InstarServerClient, UploadedMedia } from "../integration/instarServer.ts";
-import { toInstarServerPayload } from "../integration/instarServer.ts";
 import { debugLog } from "../logging/debugLogger.ts";
-import type { PlatformAdapter } from "../platforms/adapter.ts";
+import type { PlatformAdapter, Post } from "../platforms/adapter.ts";
 import type { StateRepository } from "../storage/repository.ts";
 import type { CosClientLike } from "../upload/cosStreamUpload.ts";
-import { uploadPostStreamToCos } from "../upload/cosStreamUpload.ts";
+import { uploadPostStreamToCos, uploadRemoteUrlToCos } from "../upload/cosStreamUpload.ts";
 import { buildCosObjectKey } from "../upload/objectKey.ts";
 import { collectNewPostsStream } from "./fetchPipeline.ts";
 
@@ -54,7 +52,23 @@ export interface MediaPipelineOptions {
   bucket: string;
   region: string;
   keyPrefix?: string;
-  instarClient?: InstarServerClient;
+  fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
+export interface PostSyncedEvent {
+  platform: string;
+  source: "due" | "manual";
+  starId: string;
+  postId: string;
+  sourceUrl: string;
+  mediaType?: "video" | "image";
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  publishedAt?: string;
+  title?: string;
+  description?: string;
+  authorHandle?: string;
+  rawDetail?: Record<string, unknown>;
 }
 
 export interface RunAccountIngestInput {
@@ -65,8 +79,10 @@ export interface RunAccountIngestInput {
   adapter: PlatformAdapter;
   media?: MediaPipelineOptions;
   proxy?: string;
+  manualLimit?: number;
   now?: () => Date;
   traceId?: string;
+  onPostSynced?: (event: PostSyncedEvent) => Promise<void>;
 }
 
 export interface RunAccountIngestResult {
@@ -107,6 +123,168 @@ function pickLatestPublishedAt(current: string | null, next?: string): string | 
   return nextTs > currentTs ? next : current;
 }
 
+function pickString(raw: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+const THUMBNAIL_FIELD_KEYS = ["thumbnail", "thumbnail_url", "cover", "cover_url"] as const;
+const IMAGE_SOURCE_FIELD_KEYS = [...THUMBNAIL_FIELD_KEYS, "url"] as const;
+
+interface UploadedMediaResult {
+  mediaUrl?: string;
+  thumbnailUrl?: string;
+}
+
+function isImagePost(rawDetail: Record<string, unknown> | undefined): boolean {
+  return rawDetail?.video_ext === "none";
+}
+
+async function uploadImagePostMedia(
+  input: RunAccountIngestInput,
+  post: Post,
+  rawDetail: Record<string, unknown> | undefined,
+): Promise<UploadedMediaResult> {
+  const media = input.media;
+  if (media === undefined) {
+    return {};
+  }
+
+  const sourceImageUrl = post.thumbnailUrl ?? pickString(rawDetail ?? {}, [...IMAGE_SOURCE_FIELD_KEYS]);
+  if (sourceImageUrl === undefined) {
+    throw new Error(`图文贴缺少可上传图片资源: postId=${post.postId}`);
+  }
+
+  const imageObjectKey = buildCosObjectKey(post, {
+    prefix: media.keyPrefix,
+    suffix: "image",
+    ext: "jpg",
+  });
+
+  await uploadRemoteUrlToCos({
+    sourceUrl: sourceImageUrl,
+    cosClient: media.cosClient,
+    bucket: media.bucket,
+    region: media.region,
+    key: imageObjectKey,
+    traceId: input.traceId,
+    fetchImpl: media.fetchImpl,
+  });
+
+  return {
+    mediaUrl: imageObjectKey,
+    thumbnailUrl: imageObjectKey,
+  };
+}
+
+async function uploadVideoPostMedia(
+  input: RunAccountIngestInput,
+  post: Post,
+  rawDetail: Record<string, unknown> | undefined,
+): Promise<UploadedMediaResult> {
+  const media = input.media;
+  if (media === undefined) {
+    return {};
+  }
+
+  const objectKey = buildCosObjectKey(post, {
+    prefix: media.keyPrefix,
+  });
+
+  await uploadPostStreamToCos({
+    adapter: input.adapter,
+    post,
+    cosClient: media.cosClient,
+    bucket: media.bucket,
+    region: media.region,
+    key: objectKey,
+    proxy: input.proxy,
+    traceId: input.traceId,
+  });
+
+  const sourceThumbnailUrl = post.thumbnailUrl ?? pickString(rawDetail ?? {}, [...THUMBNAIL_FIELD_KEYS]);
+  if (sourceThumbnailUrl === undefined) {
+    return { mediaUrl: objectKey };
+  }
+
+  const thumbnailObjectKey = buildCosObjectKey(post, {
+    prefix: media.keyPrefix,
+    suffix: "thumb",
+    ext: "jpg",
+  });
+
+  await uploadRemoteUrlToCos({
+    sourceUrl: sourceThumbnailUrl,
+    cosClient: media.cosClient,
+    bucket: media.bucket,
+    region: media.region,
+    key: thumbnailObjectKey,
+    traceId: input.traceId,
+    fetchImpl: media.fetchImpl,
+  });
+
+  return {
+    mediaUrl: objectKey,
+    thumbnailUrl: thumbnailObjectKey,
+  };
+}
+
+async function uploadPostMedia(
+  input: RunAccountIngestInput,
+  post: Post,
+  rawDetail: Record<string, unknown> | undefined,
+  imageMode: boolean,
+): Promise<UploadedMediaResult> {
+  if (imageMode) {
+    return uploadImagePostMedia(input, post, rawDetail);
+  }
+
+  return uploadVideoPostMedia(input, post, rawDetail);
+}
+
+function markPostFetchedSuccess(input: RunAccountIngestInput, post: Post, now: () => Date): void {
+  input.repo.markFetched({
+    platform: input.platform,
+    postId: post.postId,
+    publishedAt: post.publishedAt ?? null,
+    status: "success",
+    attempts: 1,
+    fetchedAt: now().toISOString(),
+  });
+}
+
+async function emitPostSynced(
+  input: RunAccountIngestInput,
+  post: Post,
+  imageMode: boolean,
+  mediaResult: UploadedMediaResult,
+): Promise<void> {
+  if (input.onPostSynced === undefined) {
+    return;
+  }
+
+  await input.onPostSynced({
+    platform: input.platform,
+    source: input.source,
+    starId: input.accountId,
+    postId: post.postId,
+    sourceUrl: post.sourceUrl,
+    mediaType: imageMode ? "image" : "video",
+    videoUrl: mediaResult.mediaUrl,
+    thumbnailUrl: mediaResult.thumbnailUrl,
+    publishedAt: post.publishedAt,
+    title: post.title,
+    description: post.description,
+    authorHandle: post.authorHandle,
+    rawDetail: post.rawDetail,
+  });
+}
+
 /**
  * 执行单账号抓取编排：
  * 1) 流式抓取帖子详情
@@ -141,7 +319,7 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
   for await (const post of collectNewPostsStream(input.adapter, {
     accountId: input.accountId,
     lastVideoId: existing?.lastVideoId ?? undefined,
-    limit: input.source === "manual" ? 100 : undefined,
+    limit: input.source === "manual" ? (input.manualLimit ?? 100) : undefined,
     proxy: input.proxy,
     traceId: input.traceId,
   })) {
@@ -162,58 +340,15 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
       continue;
     }
 
-    if (input.media !== undefined) {
-      const objectKey = buildCosObjectKey(post, {
-        prefix: input.media.keyPrefix,
-      });
+    const rawDetail = post.rawDetail;
+    const imageMode = post.mediaType === "image" || isImagePost(rawDetail);
 
-      await uploadPostStreamToCos({
-        adapter: input.adapter,
-        post,
-        cosClient: input.media.cosClient,
-        bucket: input.media.bucket,
-        region: input.media.region,
-        key: objectKey,
-        proxy: input.proxy,
-        traceId: input.traceId,
-      });
+    const mediaResult = await uploadPostMedia(input, post, rawDetail, imageMode);
 
-      const media: UploadedMedia = {
-        objectKey,
-        bucket: input.media.bucket,
-        region: input.media.region,
-      };
-
-      if (input.media.instarClient !== undefined) {
-        debugLog("ingest.instar.notify.start", {
-          traceId: input.traceId,
-          platform: input.platform,
-          accountId: input.accountId,
-          postId: post.postId,
-          objectKey,
-        });
-
-        await input.media.instarClient.notifyPostIngested(toInstarServerPayload(post, media));
-
-        debugLog("ingest.instar.notify.done", {
-          traceId: input.traceId,
-          platform: input.platform,
-          accountId: input.accountId,
-          postId: post.postId,
-          objectKey,
-        });
-      }
-    }
-
-    input.repo.markFetched({
-      platform: input.platform,
-      postId: post.postId,
-      publishedAt: post.publishedAt ?? null,
-      status: "success",
-      attempts: 1,
-      fetchedAt: now().toISOString(),
-    });
+    markPostFetchedSuccess(input, post, now);
     newCount += 1;
+
+    await emitPostSynced(input, post, imageMode, mediaResult);
 
     debugLog("ingest.post.done", {
       traceId: input.traceId,
@@ -221,6 +356,7 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
       accountId: input.accountId,
       postId: post.postId,
       publishedAt: post.publishedAt ?? null,
+      syncedToInstar: input.onPostSynced !== undefined,
     });
   }
 

@@ -25,6 +25,10 @@ export interface Post {
   description?: string;
   authorHandle?: string;
   publishedAt?: string;
+  mediaType?: "video" | "image";
+  videoExt?: string;
+  thumbnailUrl?: string;
+  rawDetail?: Record<string, unknown>;
 }
 
 export interface PlatformAdapter {
