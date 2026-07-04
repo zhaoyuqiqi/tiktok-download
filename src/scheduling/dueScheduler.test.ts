@@ -27,7 +27,7 @@ describe("DueScheduler", () => {
   });
 
   it("外部 trigger 与 due tick 共用同一 runAccount 流水线", async () => {
-    const calls: Array<{ accountId: string; source: "due" | "manual" }> = [];
+    const calls: Array<{ accountId: string; source: "due" | "manual"; limit?: number }> = [];
     let releaseManual!: () => void;
     const manualBlocker = new Promise<void>((resolve) => {
       releaseManual = resolve;
@@ -39,15 +39,15 @@ describe("DueScheduler", () => {
         expect(limit).toBe(1);
         return [{ platform: "tiktok", accountId: "due-account" }];
       },
-      async runAccount(accountId, source) {
-        calls.push({ accountId, source });
+      async runAccount(accountId, source, options) {
+        calls.push({ accountId, source, limit: options?.limit });
         if (source === "manual") {
           await manualBlocker;
         }
       },
     });
 
-    await scheduler.trigger("manual-account");
+    await scheduler.trigger("manual-account", { limit: 3 });
     await Bun.sleep(0);
     await scheduler.tick();
     await Bun.sleep(0);
@@ -55,8 +55,8 @@ describe("DueScheduler", () => {
     await Bun.sleep(0);
 
     expect(calls).toEqual([
-      { accountId: "manual-account", source: "manual" },
-      { accountId: "due-account", source: "due" },
+      { accountId: "manual-account", source: "manual", limit: 3 },
+      { accountId: "due-account", source: "due", limit: undefined },
     ]);
   });
 
@@ -88,7 +88,7 @@ describe("DueScheduler", () => {
   });
 
   it("manual 触发遵守全局并发上限，超额触发进入队列", async () => {
-    const calls: string[] = [];
+    const calls: Array<{ accountId: string; limit?: number }> = [];
     let releaseFirst!: () => void;
     const firstBlocker = new Promise<void>((resolve) => {
       releaseFirst = resolve;
@@ -99,25 +99,28 @@ describe("DueScheduler", () => {
       async listDueAccounts() {
         return [];
       },
-      async runAccount(accountId) {
-        calls.push(accountId);
+      async runAccount(accountId, _source, options) {
+        calls.push({ accountId, limit: options?.limit });
         if (accountId === "a") {
           await firstBlocker;
         }
       },
     });
 
-    await scheduler.trigger("a");
-    await scheduler.trigger("b");
+    await scheduler.trigger("a", { limit: 3 });
+    await scheduler.trigger("b", { limit: 2 });
     await Bun.sleep(0);
 
-    expect(calls).toEqual(["a"]);
+    expect(calls).toEqual([{ accountId: "a", limit: 3 }]);
 
     releaseFirst();
     await Bun.sleep(0);
     await Bun.sleep(0);
 
-    expect(calls).toEqual(["a", "b"]);
+    expect(calls).toEqual([
+      { accountId: "a", limit: 3 },
+      { accountId: "b", limit: 2 },
+    ]);
   });
 
   it("失败后按退避重试，且退避期间不占并发", async () => {
@@ -137,8 +140,8 @@ describe("DueScheduler", () => {
       async listDueAccounts() {
         return [];
       },
-      async runAccount(accountId) {
-        calls.push(accountId);
+      async runAccount(accountId, _source, options) {
+        calls.push(`${accountId}:${options?.limit ?? "none"}`);
         if (accountId === "unstable") {
           unstableAttempts += 1;
           if (unstableAttempts === 1) {
@@ -148,20 +151,20 @@ describe("DueScheduler", () => {
       },
     });
 
-    await scheduler.trigger("unstable");
+    await scheduler.trigger("unstable", { limit: 3 });
     await Bun.sleep(0);
 
     expect(scheduled).toHaveLength(1);
     expect(scheduled[0]?.delay).toBe(60_000);
 
-    await scheduler.trigger("stable");
+    await scheduler.trigger("stable", { limit: 1 });
     await Bun.sleep(0);
 
-    expect(calls).toEqual(["unstable", "stable"]);
+    expect(calls).toEqual(["unstable:3", "stable:1"]);
 
     scheduled[0]?.callback();
     await Bun.sleep(0);
 
-    expect(calls).toEqual(["unstable", "stable", "unstable"]);
+    expect(calls).toEqual(["unstable:3", "stable:1", "unstable:3"]);
   });
 });

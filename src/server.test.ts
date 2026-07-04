@@ -1,0 +1,83 @@
+import { describe, expect, it } from "bun:test";
+import { createApp } from "./server.ts";
+
+describe("server /fetch", () => {
+  it("仅传 starId 时返回 202 并回写 accountId/starId", async () => {
+    const app = createApp();
+    const res = await app.handle(
+      new Request("http://localhost/fetch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ starId: "@alice" }),
+      }),
+    );
+
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { accountId: string; starId: string; accepted: boolean };
+    expect(body.accepted).toBeTrue();
+    expect(body.accountId).toBe("@alice");
+    expect(body.starId).toBe("@alice");
+  });
+
+  it("同时传 accountId 与 starId 时优先 accountId", async () => {
+    const app = createApp();
+    const res = await app.handle(
+      new Request("http://localhost/fetch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId: "@acc", starId: "@star" }),
+      }),
+    );
+
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { accountId: string; starId: string; limit: number };
+    expect(body.accountId).toBe("@acc");
+    expect(body.starId).toBe("@acc");
+    expect(body.limit).toBe(100);
+  });
+
+  it("accountId 与 starId 都缺失时返回 400", async () => {
+    const app = createApp();
+    const res = await app.handle(
+      new Request("http://localhost/fetch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("accountId/starId");
+  });
+
+  it("传入 limit 时会回显该值", async () => {
+    const app = createApp();
+    const res = await app.handle(
+      new Request("http://localhost/fetch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ starId: "@alice", limit: 3 }),
+      }),
+    );
+
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { limit: number };
+    expect(body.limit).toBe(3);
+  });
+
+  it("limit 非法时返回 400", async () => {
+    const app = createApp();
+    const res = await app.handle(
+      new Request("http://localhost/fetch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ starId: "@alice", limit: 0 }),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("limit");
+  });
+});

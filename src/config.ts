@@ -20,7 +20,7 @@ const DEFAULTS = {
   accountReconcileIntervalSeconds: 300,
   globalConcurrency: 2,
   dataDir: "./data",
-  cosKeyPrefix: "tiktok",
+  cosKeyPrefix: "tiktok-download",
 } as const;
 
 function positiveInt(name: string, raw: string | undefined, fallback: number): number {

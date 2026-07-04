@@ -2,17 +2,25 @@ import { describe, expect, it } from "bun:test";
 import { AccountSourceClient } from "./accountSourceClient.ts";
 
 describe("AccountSourceClient", () => {
-  it("支持 Bearer 鉴权并解析数组响应", async () => {
+  it("支持 Bearer 鉴权并解析 instar 协议", async () => {
     let gotAuth = "";
     const client = new AccountSourceClient({
       url: "https://example.com/accounts",
       bearerToken: "demo-token",
       fetchImpl: async (_url, init) => {
         gotAuth = (init?.headers as Record<string, string> | undefined)?.Authorization ?? "";
-        return new Response(JSON.stringify(["@alice", "@bob", "@alice", " "]), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              list: [{ starId: "@alice" }, { starId: "@bob" }, { starId: "@alice" }],
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
       },
     });
 
@@ -21,17 +29,30 @@ describe("AccountSourceClient", () => {
     expect(accounts).toEqual(["@alice", "@bob"]);
   });
 
-  it("支持 { accounts: string[] } 响应格式", async () => {
+  it("code 非 0 时抛错", async () => {
     const client = new AccountSourceClient({
       url: "https://example.com/accounts",
       fetchImpl: async () =>
-        new Response(JSON.stringify({ accounts: ["@a", "@b"] }), {
+        new Response(JSON.stringify({ code: 1001, data: { list: [] } }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
     });
 
-    await expect(client.fetchAccounts()).resolves.toEqual(["@a", "@b"]);
+    await expect(client.fetchAccounts()).rejects.toThrow("code 非 0");
+  });
+
+  it("starId 为空字符串时抛错", async () => {
+    const client = new AccountSourceClient({
+      url: "https://example.com/accounts",
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ code: 0, data: { list: [{ starId: "  " }] } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    });
+
+    await expect(client.fetchAccounts()).rejects.toThrow("starId 不能为空");
   });
 
   it("非 2xx 时抛错", async () => {
@@ -43,16 +64,16 @@ describe("AccountSourceClient", () => {
     await expect(client.fetchAccounts()).rejects.toThrow("账号名单拉取失败");
   });
 
-  it("响应结构非法时抛错", async () => {
+  it("结构非法时抛错", async () => {
     const client = new AccountSourceClient({
       url: "https://example.com/accounts",
       fetchImpl: async () =>
-        new Response(JSON.stringify({ data: ["@a"] }), {
+        new Response(JSON.stringify({ code: 0, data: { accounts: ["@a"] } }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
     });
 
-    await expect(client.fetchAccounts()).rejects.toThrow("账号名单返回格式无效");
+    await expect(client.fetchAccounts()).rejects.toThrow("data.list");
   });
 });

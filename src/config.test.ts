@@ -9,7 +9,7 @@ describe("loadServiceConfig", () => {
     expect(cfg.globalConcurrency).toBe(2);
     expect(cfg.dataDir).toBe("./data");
     expect(cfg.proxy).toBeUndefined();
-    expect(cfg.cos.keyPrefix).toBe("tiktok");
+    expect(cfg.cos.keyPrefix).toBe("tiktok-download");
   });
 
   it("支持通过环境变量覆盖", () => {

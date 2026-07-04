@@ -25,6 +25,13 @@ interface RawDetailJson {
   webpage_url?: string;
   uploader_id?: string;
   timestamp?: number;
+  ext?: string;
+  video_ext?: string;
+  thumbnail?: string;
+  cover?: string;
+  cover_url?: string;
+  thumbnail_url?: string;
+  [key: string]: unknown;
 }
 
 export interface TikTokAdapterOptions {
@@ -153,6 +160,11 @@ export class TikTokAdapter implements PlatformAdapter {
     const raw = detail as RawDetailJson;
     const postId = raw.id?.trim() || ref.postId;
     const sourceUrl = raw.webpage_url ?? ref.url;
+    const rawDetail =
+      typeof detail === "object" && detail !== null ? ({ ...(detail as Record<string, unknown>) } as Record<string, unknown>) : undefined;
+
+    const mediaType = raw.video_ext === "none" ? "image" : "video";
+    const thumbnailUrl = raw.thumbnail ?? raw.cover ?? raw.cover_url ?? raw.thumbnail_url;
 
     return {
       platform: this.platform,
@@ -163,6 +175,10 @@ export class TikTokAdapter implements PlatformAdapter {
       description: raw.description,
       authorHandle: raw.uploader_id,
       publishedAt: toIsoOrUndefined(raw.timestamp),
+      mediaType,
+      videoExt: typeof raw.ext === "string" ? raw.ext : undefined,
+      thumbnailUrl,
+      rawDetail,
     };
   }
 

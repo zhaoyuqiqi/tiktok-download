@@ -5,10 +5,14 @@ export interface DueAccount {
   accountId: string;
 }
 
+export interface ManualTriggerOptions {
+  limit?: number;
+}
+
 export interface DueSchedulerDeps {
   concurrency: number;
   listDueAccounts: (limit: number) => Promise<DueAccount[]>;
-  runAccount: (accountId: string, source: "due" | "manual") => Promise<void>;
+  runAccount: (accountId: string, source: "due" | "manual", options?: ManualTriggerOptions) => Promise<void>;
   maxAttempts?: number;
   backoffMs?: number[];
   setTimer?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
@@ -23,6 +27,7 @@ export class DueScheduler {
   private readonly queuedManualSet = new Set<string>();
   private readonly retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly failedAttempts = new Map<string, number>();
+  private readonly manualOptions = new Map<string, ManualTriggerOptions>();
 
   constructor(private readonly deps: DueSchedulerDeps) {}
 
@@ -73,9 +78,10 @@ export class DueScheduler {
     }
   }
 
-  async trigger(accountId: string): Promise<void> {
+  async trigger(accountId: string, options?: ManualTriggerOptions): Promise<void> {
     debugLog("scheduler.trigger.requested", {
       accountId,
+      limit: options?.limit ?? null,
       runningCount: this.runningAccounts.size,
       queuedManualCount: this.queuedManualAccounts.length,
       concurrency: this.deps.concurrency,
@@ -87,6 +93,8 @@ export class DueScheduler {
       debugLog("scheduler.trigger.ignored_duplicate", { accountId });
       return;
     }
+
+    this.manualOptions.set(accountId, options ?? {});
 
     if (this.runningAccounts.size >= this.deps.concurrency) {
       this.enqueueManual(accountId);
@@ -151,6 +159,9 @@ export class DueScheduler {
     if (attempt > maxAttempts) {
       this.failedAttempts.delete(accountId);
       this.cancelRetry(accountId);
+      if (source === "manual") {
+        this.manualOptions.delete(accountId);
+      }
       debugLog("scheduler.retry.give_up", {
         accountId,
         source,
@@ -199,19 +210,25 @@ export class DueScheduler {
       return;
     }
 
+    const options = source === "manual" ? this.manualOptions.get(accountId) : undefined;
+
     this.runningAccounts.add(accountId);
     debugLog("scheduler.account.start", {
       accountId,
       source,
+      limit: options?.limit ?? null,
       runningCount: this.runningAccounts.size,
       concurrency: this.deps.concurrency,
     });
 
     Promise.resolve()
-      .then(() => this.deps.runAccount(accountId, source))
+      .then(() => this.deps.runAccount(accountId, source, options))
       .then(() => {
         this.failedAttempts.delete(accountId);
         this.cancelRetry(accountId);
+        if (source === "manual") {
+          this.manualOptions.delete(accountId);
+        }
         debugLog("scheduler.account.success", {
           accountId,
           source,

@@ -6,6 +6,13 @@ export interface AccountSourceClientOptions {
   fetchImpl?: FetchLike;
 }
 
+interface InstarAccountListPayload {
+  code?: unknown;
+  data?: {
+    list?: unknown;
+  };
+}
+
 export class AccountSourceClient {
   private readonly url: string;
   private readonly bearerToken?: string;
@@ -31,27 +38,38 @@ export class AccountSourceClient {
       throw new Error(`账号名单拉取失败: ${response.status} ${response.statusText}`);
     }
 
-    const payload = (await response.json()) as unknown;
-    const rawAccounts = Array.isArray(payload)
-      ? payload
-      : typeof payload === "object" && payload !== null && "accounts" in payload
-        ? (payload as { accounts?: unknown }).accounts
-        : null;
+    const payload = (await response.json()) as InstarAccountListPayload;
 
-    if (!Array.isArray(rawAccounts)) {
-      throw new Error("账号名单返回格式无效，期望 string[] 或 { accounts: string[] }");
+    if (payload === null || typeof payload !== "object") {
+      throw new Error("账号名单返回格式无效，期望 { code:0, data:{ list:[{starId}] } }");
+    }
+
+    if (payload.code !== 0) {
+      throw new Error(`账号名单返回 code 非 0: ${String(payload.code)}`);
+    }
+
+    const list = payload.data?.list;
+    if (!Array.isArray(list)) {
+      throw new Error("账号名单返回格式无效，期望 data.list 为数组");
     }
 
     const dedup = new Set<string>();
-    for (const item of rawAccounts) {
-      if (typeof item !== "string") {
-        continue;
+    for (const item of list) {
+      if (typeof item !== "object" || item === null || !("starId" in item)) {
+        throw new Error("账号名单返回格式无效，期望 list 元素包含 starId");
       }
-      const accountId = item.trim();
-      if (accountId.length === 0) {
-        continue;
+
+      const rawStarId = (item as { starId?: unknown }).starId;
+      if (typeof rawStarId !== "string") {
+        throw new Error("账号名单返回格式无效，starId 必须是字符串");
       }
-      dedup.add(accountId);
+
+      const starId = rawStarId.trim();
+      if (starId.length === 0) {
+        throw new Error("账号名单返回格式无效，starId 不能为空");
+      }
+
+      dedup.add(starId);
     }
 
     return [...dedup];

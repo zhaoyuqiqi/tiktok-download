@@ -1,5 +1,8 @@
+import { Readable } from "node:stream";
 import { debugLog } from "../logging/debugLogger.ts";
 import type { PlatformAdapter, Post } from "../platforms/adapter.ts";
+
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface CosPutObjectInput {
   Bucket: string;
@@ -21,6 +24,16 @@ export interface UploadPostStreamToCosInput {
   key: string;
   proxy?: string;
   traceId?: string;
+}
+
+export interface UploadRemoteUrlToCosInput {
+  sourceUrl: string;
+  cosClient: CosClientLike;
+  bucket: string;
+  region: string;
+  key: string;
+  traceId?: string;
+  fetchImpl?: FetchLike;
 }
 
 /**
@@ -85,6 +98,53 @@ export async function uploadPostStreamToCos(input: UploadPostStreamToCosInput): 
   }
 
   await putPromise;
+  debugLog("upload.cos.put.done", {
+    traceId: input.traceId,
+    bucket: input.bucket,
+    region: input.region,
+    key: input.key,
+  });
+}
+
+export async function uploadRemoteUrlToCos(input: UploadRemoteUrlToCosInput): Promise<void> {
+  const fetchImpl = input.fetchImpl ?? fetch;
+
+  debugLog("upload.remote.fetch.start", {
+    traceId: input.traceId,
+    sourceUrl: input.sourceUrl,
+    key: input.key,
+  });
+
+  const response = await fetchImpl(input.sourceUrl);
+  if (!response.ok || response.body === null) {
+    throw new Error(`远程资源下载失败: ${response.status} ${response.statusText}`);
+  }
+
+  debugLog("upload.remote.fetch.done", {
+    traceId: input.traceId,
+    sourceUrl: input.sourceUrl,
+    key: input.key,
+  });
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const body = Readable.from([buffer]);
+
+  debugLog("upload.cos.put.start", {
+    traceId: input.traceId,
+    bucket: input.bucket,
+    region: input.region,
+    key: input.key,
+  });
+
+  await Promise.resolve(
+    input.cosClient.putObject({
+      Bucket: input.bucket,
+      Region: input.region,
+      Key: input.key,
+      Body: body,
+    }),
+  );
+
   debugLog("upload.cos.put.done", {
     traceId: input.traceId,
     bucket: input.bucket,
