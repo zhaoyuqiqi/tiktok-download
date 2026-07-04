@@ -2,11 +2,12 @@
 change: serve-tiktok-download-worker
 design-doc: docs/superpowers/specs/2026-07-03-serve-tiktok-download-worker-design.md
 base-ref: e6e9998a62c42f5e5981a2866410513a96be0131
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 # TikTok 下载服务化改造 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 将一次性 CLI 下载器重构为常驻 Elysia Web 服务:due 驱动调度、SQLite 最小状态持久化、平台适配器解耦、并发/串行/退避控制、COS 流式上传、instar 回传预留。
 
@@ -63,6 +64,7 @@ base-ref: e6e9998a62c42f5e5981a2866410513a96be0131
 | 27 | 补全关键场景集成测试 | 7.1 | 全部验收场景回归 |
 | 28 | 更新 README/部署说明(挂载 volume) | 7.2 | 重启保留(Docker) |
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ## File Structure
@@ -90,6 +92,7 @@ base-ref: e6e9998a62c42f5e5981a2866410513a96be0131
 
 移除(Task 26):`src/parsing/`、`src/scheduling/`、`src/ytdlp-manager/worker.ts`、`src/upload/uploader.ts`(旧 Noop)、`src/cli.test.ts`、CLI 版 `parseArgs`/`main`。
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 1: 引入依赖并搭建 Elysia 服务空壳
@@ -103,12 +106,12 @@ base-ref: e6e9998a62c42f5e5981a2866410513a96be0131
 - Consumes: 无
 - Produces: `createServer(deps: ServerDeps): Elysia` —— 本任务仅产出最小空壳,`ServerDeps` 暂为空对象 `{}`;返回的 app 提供 `GET /health` 返回 `{ ok: true }`。后续 Task 23/24/25 扩展路由与依赖。
 
-- [ ] **Step 1: 安装依赖**
+- [x] **Step 1: 安装依赖**
 
 Run: `bun add elysia`
 Expected: `package.json` 的 `dependencies` 出现 `elysia`(`cos-nodejs-sdk-v5` 已存在,无需再装)。
 
-- [ ] **Step 2: 写失败测试**
+- [x] **Step 2: 写失败测试**
 
 ```ts
 // src/server.test.ts
@@ -123,12 +126,12 @@ test("GET /health 返回 ok", async () => {
 });
 ```
 
-- [ ] **Step 3: 跑测试确认失败**
+- [x] **Step 3: 跑测试确认失败**
 
 Run: `bun test src/server.test.ts`
 Expected: FAIL(`Cannot find module './server.ts'`)。
 
-- [ ] **Step 4: 最小实现**
+- [x] **Step 4: 最小实现**
 
 ```ts
 // src/server.ts
@@ -141,18 +144,19 @@ export function createServer(_deps: ServerDeps): Elysia {
 }
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `bun test src/server.test.ts`
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add package.json bun.lock src/server.ts src/server.test.ts
 git commit -m "feat: scaffold elysia server shell with health endpoint"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 2: Config 环境变量解析
@@ -190,7 +194,7 @@ git commit -m "feat: scaffold elysia server shell with health endpoint"
   ```
   `loadConfig` 接收 env 对象(便于测试注入),不直接读 `process.env`。缺失必填项抛 `Error`。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/config.test.ts
@@ -232,12 +236,12 @@ test("缺 COS 必填抛错", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/config.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/config.ts
@@ -311,18 +315,19 @@ export function loadConfig(env: Env): AppConfig {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/config.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/config.ts src/config.test.ts
 git commit -m "feat: add env-driven app config with defaults and required checks"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 3: Clock 抽象(可控时钟)
@@ -349,7 +354,7 @@ git commit -m "feat: add env-driven app config with defaults and required checks
   ```
   `ManualClock.sleep` 不真等待;`advance(ms)` 把当前时间前进 `ms` 并 resolve 所有到期的 sleep。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/clock.test.ts
@@ -375,12 +380,12 @@ test("sleep 在 advance 到时后 resolve", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/clock.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/clock.ts
@@ -433,18 +438,19 @@ export class ManualClock implements Clock {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/clock.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/clock.ts src/clock.test.ts
 git commit -m "feat: add injectable Clock with SystemClock and controllable ManualClock"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 4: 标准化 Post 结构与 PlatformAdapter 接口
@@ -489,7 +495,7 @@ git commit -m "feat: add injectable Clock with SystemClock and controllable Manu
   ```
   注:`MediaStream` 与既有 `ProcessStream` 形似但增加 `abort()`,供流水线超时中止。
 
-- [ ] **Step 1: 写失败测试(契约冒烟)**
+- [x] **Step 1: 写失败测试(契约冒烟)**
 
 ```ts
 // src/platform/adapter.test.ts
@@ -524,12 +530,12 @@ test("可实现一个最小 PlatformAdapter", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/platform/adapter.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现(纯类型 + 无运行时逻辑)**
+- [x] **Step 3: 实现(纯类型 + 无运行时逻辑)**
 
 ```ts
 // src/platform/adapter.ts
@@ -569,18 +575,19 @@ export interface PlatformAdapter {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/platform/adapter.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/platform/adapter.ts src/platform/adapter.test.ts
 git commit -m "feat: define platform-agnostic Post and PlatformAdapter interface"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 5: Store — SQLite schema 与建库
@@ -611,7 +618,7 @@ git commit -m "feat: define platform-agnostic Post and PlatformAdapter interface
   ```
   构造时执行 DDL(`CREATE TABLE IF NOT EXISTS`)并开启 `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;`。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/store/store.test.ts
@@ -628,12 +635,12 @@ test("建库后两张表存在", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/store/store.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现 schema**
+- [x] **Step 3: 实现 schema**
 
 ```ts
 // src/store/schema.ts
@@ -662,7 +669,7 @@ CREATE TABLE IF NOT EXISTS fetched_posts (
 `;
 ```
 
-- [ ] **Step 4: 实现 Store 骨架**
+- [x] **Step 4: 实现 Store 骨架**
 
 ```ts
 // src/store/store.ts
@@ -702,18 +709,19 @@ export class Store {
 }
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `bun test src/store/store.test.ts`
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/store/schema.ts src/store/store.ts src/store/store.test.ts
 git commit -m "feat: add sqlite Store with WAL schema for accounts and fetched_posts"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 6: Store — 去重读写、账号 upsert 与游标推进
@@ -735,7 +743,7 @@ git commit -m "feat: add sqlite Store with WAL schema for accounts and fetched_p
   ```
   `markSuccess`:UPSERT 一行 status=success、fetched_at=now、attempts 保留、next_attempt_at 清空。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 // 追加到 src/store/store.test.ts
@@ -772,12 +780,12 @@ test("重启后去重记录保留(临时文件)", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/store/store.test.ts`
 Expected: FAIL(方法未定义)。
 
-- [ ] **Step 3: 实现方法(追加到 Store 类)**
+- [x] **Step 3: 实现方法(追加到 Store 类)**
 
 ```ts
   private rowToAccount(r: any): AccountRow {
@@ -837,18 +845,19 @@ Expected: FAIL(方法未定义)。
   }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/store/store.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/store/store.ts src/store/store.test.ts
 git commit -m "feat: add dedup read/write, account upsert and cursor advance to Store"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 7: Store — lease 领取事务与心跳续租
@@ -869,7 +878,7 @@ git commit -m "feat: add dedup read/write, account upsert and cursor advance to 
   ```
   `leaseDueAccounts` 必须在单个 `BEGIN IMMEDIATE` 事务里完成 select+update,保证并发调用不重复领同一账号。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 test("leaseDueAccounts 只领到期且未租出的账号,并写 lease", () => {
@@ -913,12 +922,12 @@ test("LIMIT 约束领取数量", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/store/store.test.ts`
 Expected: FAIL(方法未定义)。
 
-- [ ] **Step 3: 实现(追加到 Store)**
+- [x] **Step 3: 实现(追加到 Store)**
 
 ```ts
   leaseDueAccounts(platform: string, now: number, baselineMs: number, limit: number): AccountRow[] {
@@ -966,18 +975,19 @@ Expected: FAIL(方法未定义)。
 
 注:`this.db.transaction(fn)()` 是 bun:sqlite 的事务 API(同步闭包内的所有写入原子提交);若需要 IMMEDIATE 锁,用 `this.db.transaction(fn).immediate()`。实现时优先 `.immediate()`,若类型不支持则保留默认事务(WAL + busy_timeout 已足够单连接场景)。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/store/store.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/store/store.ts src/store/store.test.ts
 git commit -m "feat: add transactional lease acquisition and heartbeat to Store"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 8: Store — reconcile upsert 与 inactive 标记
@@ -998,7 +1008,7 @@ git commit -m "feat: add transactional lease acquisition and heartbeat to Store"
   ```
   `reconcile` 语义:wanted 中不存在的插入;已存在的置 active=1(不覆盖调度状态);本地存在但不在 wanted 的置 active=0。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 test("reconcile 新增账号 next_run_at=now+jitter 且 active", () => {
@@ -1033,12 +1043,12 @@ test("reconcile 移除的账号标记 inactive 但保留去重历史", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/store/store.test.ts`
 Expected: FAIL(方法未定义)。
 
-- [ ] **Step 3: 实现(追加到 Store)**
+- [x] **Step 3: 实现(追加到 Store)**
 
 ```ts
   listAccountIds(platform: string): string[] {
@@ -1080,18 +1090,19 @@ Expected: FAIL(方法未定义)。
   }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/store/store.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/store/store.ts src/store/store.test.ts
 git commit -m "feat: add reconcile upsert and inactive marking to Store"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 9: Store — 退避帖子写入与 due 帖子/账号挑选
@@ -1113,7 +1124,7 @@ git commit -m "feat: add reconcile upsert and inactive marking to Store"
   ```
   `markFailed`:attempts 自增;`next_attempt_at=null` 表示耗尽(最终 failed,不再被 `dueFailedPosts` 选中)。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 test("markFailed 自增 attempts 并可被 dueFailedPosts 选中", () => {
@@ -1151,12 +1162,12 @@ test("成功后不再被 dueFailedPosts 选中", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/store/store.test.ts`
 Expected: FAIL(方法未定义)。
 
-- [ ] **Step 3: 实现(追加到 Store)**
+- [x] **Step 3: 实现(追加到 Store)**
 
 ```ts
   markFailed(platform: string, postId: string, nextAttemptAt: number | null): void {
@@ -1205,18 +1216,19 @@ export interface FailedPost {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/store/store.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/store/store.ts src/store/store.test.ts
 git commit -m "feat: add failed-post backoff persistence and due selection to Store"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 10: TikTokAdapter — listPosts(`-J --flat-playlist`)
@@ -1239,7 +1251,7 @@ git commit -m "feat: add failed-post backoff persistence and due selection to St
   ```
   `listPosts`:构造账号主页 URL `https://www.tiktok.com/@<accountId>`,`args=["-J","--flat-playlist", (proxy?["--proxy",proxy]:[]), url]`,`runner.run` → 解析 `entries`。返回倒序(yt-dlp 主页默认最新在前),`listIndex` 为数组下标。`lastVideoId` 只用于 pipeline 过滤,adapter 不截断(本任务不处理 lastVideoId,原样返回全部候选)。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/platform/tiktok/adapter.test.ts
@@ -1291,12 +1303,12 @@ test("proxy 透传 --proxy", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/platform/tiktok/adapter.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现 listPosts(其余方法先抛未实现)**
+- [x] **Step 3: 实现 listPosts(其余方法先抛未实现)**
 
 ```ts
 // src/platform/tiktok/adapter.ts
@@ -1365,18 +1377,19 @@ export class TikTokAdapter implements PlatformAdapter {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/platform/tiktok/adapter.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/platform/tiktok/adapter.ts src/platform/tiktok/adapter.test.ts
 git commit -m "feat: implement TikTokAdapter.listPosts via yt-dlp flat-playlist"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 11: TikTokAdapter — fetchDetail(`-J`)与 cleanse(发布时间降级)
@@ -1391,7 +1404,7 @@ git commit -m "feat: implement TikTokAdapter.listPosts via yt-dlp flat-playlist"
   - `fetchDetail(ref)`:`args=["-J", ...proxy, ref.url]` → `runner.run` → `JSON.parse(stdout)`。
   - `cleanse(ref, detail)`:发布时间优先级 `timestamp`(秒→ms)→`upload_date`(YYYYMMDD 当天 0 点 UTC→ms)→都无则 `publishedEst=true` 且 `publishedAt` 用 `ref.listIndex` 兜底占位(见下,由 pipeline 结合列表基准最终校正;adapter 侧先给 `0` 并置 est=true,pipeline 会重排)。为可测,cleanse 缺时间返回 `publishedAt=0, publishedEst=true`。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 const ref = { platform: "tiktok", id: "p1", accountId: "u", url: "http://x/p1", listIndex: 0 };
@@ -1425,12 +1438,12 @@ test("cleanse 都缺时置 publishedEst=true", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/platform/tiktok/adapter.test.ts`
 Expected: FAIL(抛 not implemented)。
 
-- [ ] **Step 3: 实现(替换 Task 10 的占位方法)**
+- [x] **Step 3: 实现(替换 Task 10 的占位方法)**
 
 ```ts
   async fetchDetail(ref: PostRef): Promise<unknown> {
@@ -1470,18 +1483,19 @@ Expected: FAIL(抛 not implemented)。
   }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/platform/tiktok/adapter.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/platform/tiktok/adapter.ts src/platform/tiktok/adapter.test.ts
 git commit -m "feat: implement TikTokAdapter fetchDetail and cleanse with publish-time fallback"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 12: TikTokAdapter — openMediaStream(`-o -`)与中止
@@ -1494,7 +1508,7 @@ git commit -m "feat: implement TikTokAdapter fetchDetail and cleanse with publis
 - Consumes: `ProcessRunner.runStream`、`Post`、`MediaStream`
 - Produces:`openMediaStream(post)`:`args=["-o","-", ...proxy, post.url]`,调用 `runner.runStream(args)`,包装为 `MediaStream`:`stream=ps.stdout`、`exited=ps.exited`、`abort()` 触发底层 kill。为让 `abort` 可测且不依赖真实进程,`ProcessStream` 增加可选 `kill?()`(在 `src/types.ts` 扩展),`YtDlpRunner.runStream` 实现 `kill` 调用 `child.kill()`。`abort()` 调用 `ps.kill?.()`。
 
-- [ ] **Step 1: 扩展 ProcessStream 类型(先改类型)**
+- [x] **Step 1: 扩展 ProcessStream 类型(先改类型)**
 
 在 `src/types.ts` 的 `ProcessStream` 增加可选方法:
 
@@ -1518,7 +1532,7 @@ export interface ProcessStream {
     };
 ```
 
-- [ ] **Step 2: 写失败测试(追加)**
+- [x] **Step 2: 写失败测试(追加)**
 
 ```ts
 import { Readable } from "node:stream";
@@ -1572,12 +1586,12 @@ test("abort 触发底层 kill", () => {
 });
 ```
 
-- [ ] **Step 3: 跑测试确认失败**
+- [x] **Step 3: 跑测试确认失败**
 
 Run: `bun test src/platform/tiktok/adapter.test.ts`
 Expected: FAIL(openMediaStream 抛 not implemented)。
 
-- [ ] **Step 4: 实现(替换占位)**
+- [x] **Step 4: 实现(替换占位)**
 
 ```ts
   openMediaStream(post: Post): MediaStream {
@@ -1591,18 +1605,19 @@ Expected: FAIL(openMediaStream 抛 not implemented)。
   }
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `bun test src/platform/tiktok/adapter.test.ts src/ytdlp-manager/runner.test.ts`
 Expected: PASS(runner 现有测试不回归)。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/types.ts src/ytdlp-manager/runner.ts src/platform/tiktok/adapter.ts src/platform/tiktok/adapter.test.ts
 git commit -m "feat: implement TikTokAdapter.openMediaStream with abortable child process"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 13: COS key 纯函数
@@ -1615,7 +1630,7 @@ git commit -m "feat: implement TikTokAdapter.openMediaStream with abortable chil
 - Consumes: `Post`(Task 4)
 - Produces:`export function cosKey(post: Post, now: Date): string;` 默认返回 `yyyyMMddHHmmss + post.id`(UTC)。`now` 参数注入便于测试。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/pipeline/cosKey.test.ts
@@ -1643,12 +1658,12 @@ test("补零正确", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/pipeline/cosKey.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/pipeline/cosKey.ts
@@ -1670,18 +1685,19 @@ export function cosKey(post: Post, now: Date): string {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/pipeline/cosKey.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/pipeline/cosKey.ts src/pipeline/cosKey.test.ts
 git commit -m "feat: add pure cosKey function (yyyyMMddHHmmss+id)"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 14: CosUploader — 流式 putObject 与 abort
@@ -1708,7 +1724,7 @@ git commit -m "feat: add pure cosKey function (yyyyMMddHHmmss+id)"
   ```
   `upload`:`putObject({Bucket,Region,Key:key,Body:stream})`;当 `signal.aborted` 或触发 abort 时 `stream.destroy()` 并 reject。**注意:此 `Uploader` 接口替换 `src/types.ts` 里旧的 `upload(filePath)` 语义**——旧接口随 CLI 一并在 Task 26 删除。本任务把新接口定义在 `src/pipeline/uploader.ts`,不动 `src/types.ts`(避免与尚存的旧 scheduler 冲突)。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/pipeline/uploader.test.ts
@@ -1748,12 +1764,12 @@ test("abort 时销毁流并 reject", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/pipeline/uploader.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/pipeline/uploader.ts
@@ -1814,18 +1830,19 @@ export class CosUploader implements Uploader {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/pipeline/uploader.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/pipeline/uploader.ts src/pipeline/uploader.test.ts
 git commit -m "feat: add streaming CosUploader with abort support"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 15: CallbackSink 接口与预留实现
@@ -1848,7 +1865,7 @@ git commit -m "feat: add streaming CosUploader with abort support"
   }
   ```
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/pipeline/callbackSink.test.ts
@@ -1877,12 +1894,12 @@ test("HttpCallbackSink POST 标准化数据到 url", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/pipeline/callbackSink.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/pipeline/callbackSink.ts
@@ -1925,18 +1942,19 @@ export class HttpCallbackSink implements CallbackSink {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/pipeline/callbackSink.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/pipeline/callbackSink.ts src/pipeline/callbackSink.test.ts
 git commit -m "feat: add CallbackSink interface with noop and reserved http impl"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 16: 随机延迟工具(Clock 可测)
@@ -1949,7 +1967,7 @@ git commit -m "feat: add CallbackSink interface with noop and reserved http impl
 - Consumes: `Clock`(Task 3)
 - Produces:`export function randomDelayMs(minMs: number, maxMs: number, rand?: () => number): number;`(默认 `Math.random`)、`export async function randomSleep(clock: Clock, minMs: number, maxMs: number, rand?: () => number): Promise<number>;`(用 `clock.sleep` 等待并返回实际延迟)。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/pipeline/delay.test.ts
@@ -1977,12 +1995,12 @@ test("randomSleep 用 Clock 等待,不真 sleep", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/pipeline/delay.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/pipeline/delay.ts
@@ -2004,18 +2022,19 @@ export async function randomSleep(
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/pipeline/delay.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/pipeline/delay.ts src/pipeline/delay.test.ts
 git commit -m "feat: add clock-driven random delay helper for anti-throttle"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 17: FetchPipeline — 候选过滤、排序与主动 100 条上限
@@ -2047,7 +2066,7 @@ git commit -m "feat: add clock-driven random delay helper for anti-throttle"
   4. 逐个查 `isFetched` 跳过已 success;
   5. `reverse()` 得从旧到新。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/pipeline/pipeline.test.ts
@@ -2088,12 +2107,12 @@ test("activeMaxPosts 与去重同时生效", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/pipeline/pipeline.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现 selectCandidates**
+- [x] **Step 3: 实现 selectCandidates**
 
 ```ts
 // src/pipeline/pipeline.ts
@@ -2122,18 +2141,19 @@ export function selectCandidates(
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/pipeline/pipeline.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/pipeline/pipeline.ts src/pipeline/pipeline.test.ts
 git commit -m "feat: add candidate filtering, dedup, cursor cutoff and active-limit"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 18: FetchPipeline — 逐帖端到端处理(延迟/详情/清洗/上传/超时/退避/回传/去重)
@@ -2175,7 +2195,7 @@ git commit -m "feat: add candidate filtering, dedup, cursor cutoff and active-li
 
   超时实现要点(可测):用 `Promise.race([work, timeout])`,`timeout` 用 `clock.sleep(postTimeoutMs)` 后 `abort()`;`ManualClock.advance` 可驱动超时。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 import { FetchPipeline, type PipelineDeps } from "./pipeline.ts";
@@ -2293,12 +2313,12 @@ test("退避档位随 attempts 递增,耗尽后 next_attempt_at=null", async () 
 
 > `refs` 复用 Task 17 测试文件里已定义的 helper(同一文件,无需重复定义)。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/pipeline/pipeline.test.ts`
 Expected: FAIL(`FetchPipeline` 未定义)。
 
-- [ ] **Step 3: 实现 FetchPipeline(追加到 pipeline.ts)**
+- [x] **Step 3: 实现 FetchPipeline(追加到 pipeline.ts)**
 
 ```ts
 import type { MediaStream, PlatformAdapter, Post, PostRef } from "../platform/adapter.ts";
@@ -2432,12 +2452,12 @@ export class FetchPipeline {
 
 > 实现注意:上面 `run` 内联的 `latestPostAt/latestVideoId` 需在 `processOne` 成功后回填。改为在 `processOne` 返回成功时,由 `run` 读取 `post` 信息更新。简化做法:`processOne` 返回 `{ ok: boolean; post?: Post }`,`run` 据此更新 `latestPostAt=max`、`latestVideoId=最后成功的 id`。实现时按此调整签名(测试只断言 `newPosts` 与 store 状态,`latest*` 由 Task 20 的调度器使用)。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/pipeline/pipeline.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 单帖超时测试(追加,验证中止)**
+- [x] **Step 5: 单帖超时测试(追加,验证中止)**
 
 ```ts
 test("单帖上传超时:abort 媒体流并判失败", async () => {
@@ -2468,13 +2488,14 @@ test("单帖上传超时:abort 媒体流并判失败", async () => {
 Run: `bun test src/pipeline/pipeline.test.ts`
 Expected: PASS(如超时未触发,检查 `Promise.race`/`advance` 交互并调整为 `randomSleep` 用 `rand:()=>0` 使延迟为 0)。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/pipeline/pipeline.ts src/pipeline/pipeline.test.ts
 git commit -m "feat: implement FetchPipeline per-post processing with timeout, backoff, callback"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 19: 自适应 next_run_at 纯函数
@@ -2499,7 +2520,7 @@ git commit -m "feat: implement FetchPipeline per-post processing with timeout, b
   ```
   规则:若 `!hasNewPosts` 且 `lastPostAt` 存在且 `now - lastPostAt >= idleThresholdMs` → `now + idleIntervalMs`;否则 `now + max(activeMinIntervalMs, 动态间隔)`。动态间隔 MVP 取 `activeMinIntervalMs`(即高频账号按下限 30min;设计允许 MAY 提频,取下限即满足"不低于 30min")。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/pipeline/nextRun.test.ts
@@ -2532,12 +2553,12 @@ test("lastPostAt 为空:按 30min 下限", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/pipeline/nextRun.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/pipeline/nextRun.ts
@@ -2559,18 +2580,19 @@ export function computeNextRunAt(input: NextRunInput): number {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/pipeline/nextRun.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/pipeline/nextRun.ts src/pipeline/nextRun.test.ts
 git commit -m "feat: add adaptive next_run_at computation with idle downshift"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 20: Scheduler — 并发信号量、due tick、lease 心跳、自适应回写
@@ -2603,7 +2625,7 @@ git commit -m "feat: add adaptive next_run_at computation with idle downshift"
   ```
   `tick`:`remaining = globalConcurrency - runningCount()`;`store.leaseDueAccounts(platform, now, leaseBaselineMs, remaining)`;对每个领到的账号:占用一个并发槽、起 lease 心跳定时(每 `leaseHeartbeatMs` 调 `heartbeat(now+leaseBaselineMs)`)、跑 `pipeline.run({accountId, lastVideoId})`、结束后 `computeNextRunAt` 回写 `next_run_at`、停心跳、`releaseLease`、释放槽。同账号串行由 lease 保证。异常必须释放 lease 与槽。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 // src/scheduler/scheduler.test.ts
@@ -2668,12 +2690,12 @@ test("同账号不被同一 tick 重复领取", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/scheduler/scheduler.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 // src/scheduler/scheduler.ts
@@ -2753,7 +2775,7 @@ export class Scheduler {
 }
 ```
 
-- [ ] **Step 4: 补 Store.setNextRunAt(实现依赖)**
+- [x] **Step 4: 补 Store.setNextRunAt(实现依赖)**
 
 在 `src/store/store.ts` 追加(并在 `src/store/store.test.ts` 加一条断言):
 
@@ -2779,18 +2801,19 @@ test("setNextRunAt 更新 next_run_at", () => {
 });
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `bun test src/scheduler/scheduler.test.ts src/store/store.test.ts`
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/scheduler/scheduler.ts src/scheduler/scheduler.test.ts src/store/store.ts src/store/store.test.ts
 git commit -m "feat: implement Scheduler with concurrency, due lease, heartbeat and adaptive rerun"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 21: Scheduler — 退避帖子重拉旁路
@@ -2805,7 +2828,7 @@ git commit -m "feat: implement Scheduler with concurrency, due lease, heartbeat 
 
   实现:新增私有 `collectDueAccounts(now, remaining)`:先 `leaseDueAccounts`,若还有剩余额度,再对 `dueFailedPosts` 的 distinct accountId 逐个尝试 `leaseSpecificAccount`(见 Store 补充方法),领到的走 `runAccount(accountId, undefined, undefined, onlyPostIds)`。
 
-- [ ] **Step 1: 补 Store.leaseSpecificAccount(实现依赖)**
+- [x] **Step 1: 补 Store.leaseSpecificAccount(实现依赖)**
 
 在 `src/store/store.ts` 追加,并在 store.test.ts 加断言:
 
@@ -2843,7 +2866,7 @@ test("leaseSpecificAccount 领取后再次领取失败", () => {
 });
 ```
 
-- [ ] **Step 2: 写失败测试(追加到 scheduler.test.ts)**
+- [x] **Step 2: 写失败测试(追加到 scheduler.test.ts)**
 
 ```ts
 test("到期失败帖子触发所属账号重拉(onlyPostIds 直抓)", async () => {
@@ -2866,12 +2889,12 @@ test("到期失败帖子触发所属账号重拉(onlyPostIds 直抓)", async () 
 });
 ```
 
-- [ ] **Step 3: 跑测试确认失败**
+- [x] **Step 3: 跑测试确认失败**
 
 Run: `bun test src/scheduler/scheduler.test.ts`
 Expected: FAIL(重拉未实现)。
 
-- [ ] **Step 4: 实现(修改 tick)**
+- [x] **Step 4: 实现(修改 tick)**
 
 ```ts
   async tick(): Promise<number> {
@@ -2909,7 +2932,7 @@ Expected: FAIL(重拉未实现)。
   }
 ```
 
-- [ ] **Step 5: 实现说明 —— 让退避帖子能定位账号**
+- [x] **Step 5: 实现说明 —— 让退避帖子能定位账号**
 
 `fetched_posts` 无 `account_id` 列(设计只存最小状态)。为支持重拉需知道失败帖属于哪个账号。两种方案,选**方案 A**(改 `dueFailedPosts` 关联):失败帖的 accountId 可由 `fetched_posts` 加一列 `account_id` 承载(仍是最小调度状态,不算帖子全量信息)。据此:
 
@@ -2920,18 +2943,19 @@ Expected: FAIL(重拉未实现)。
 
 > 执行者注意:此为跨任务签名变更。落地顺序 = 先改 schema+Store(markSuccess/markFailed/dueFailedPosts/FailedPost 加 accountId)并更新 Task 6/9 测试 → 再改 pipeline 调用点与测试 → 最后完成本 tick 重拉逻辑。`runAccount` 增加第 4 参 `onlyPostIds?: string[]`,透传给 `pipeline.run`。
 
-- [ ] **Step 6: 跑全部相关测试确认通过**
+- [x] **Step 6: 跑全部相关测试确认通过**
 
 Run: `bun test src/scheduler/ src/store/ src/pipeline/`
 Expected: PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add src/store/schema.ts src/store/store.ts src/store/store.test.ts src/pipeline/pipeline.ts src/pipeline/pipeline.test.ts src/scheduler/scheduler.ts src/scheduler/scheduler.test.ts
 git commit -m "feat: repull due failed posts by owning account without occupying idle slot"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 22: AccountListSource 与 Reconciler 循环
@@ -2963,7 +2987,7 @@ git commit -m "feat: repull due failed posts by owning account without occupying
   }
   ```
 
-- [ ] **Step 1: 写失败测试(listSource)**
+- [x] **Step 1: 写失败测试(listSource)**
 
 ```ts
 // src/accounts/listSource.test.ts
@@ -2989,7 +3013,7 @@ test("非 2xx 抛错", async () => {
 });
 ```
 
-- [ ] **Step 2: 写失败测试(reconciler)**
+- [x] **Step 2: 写失败测试(reconciler)**
 
 ```ts
 // src/accounts/reconciler.test.ts
@@ -3019,12 +3043,12 @@ test("拉取失败时保留现有名单不清空", async () => {
 });
 ```
 
-- [ ] **Step 3: 跑测试确认失败**
+- [x] **Step 3: 跑测试确认失败**
 
 Run: `bun test src/accounts/`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 4: 实现 listSource**
+- [x] **Step 4: 实现 listSource**
 
 ```ts
 // src/accounts/listSource.ts
@@ -3051,7 +3075,7 @@ export class HttpAccountListSource implements AccountListSource {
 }
 ```
 
-- [ ] **Step 5: 实现 reconciler**
+- [x] **Step 5: 实现 reconciler**
 
 ```ts
 // src/accounts/reconciler.ts
@@ -3088,18 +3112,19 @@ export class Reconciler {
 }
 ```
 
-- [ ] **Step 6: 跑测试确认通过**
+- [x] **Step 6: 跑测试确认通过**
 
 Run: `bun test src/accounts/`
 Expected: PASS。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add src/accounts/listSource.ts src/accounts/reconciler.ts src/accounts/listSource.test.ts src/accounts/reconciler.test.ts
 git commit -m "feat: add account list source and reconciler with failure-safe upsert"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 23: HTTP — POST /fetch(异步 202 + 即时插入账号)
@@ -3126,7 +3151,7 @@ git commit -m "feat: add account list source and reconciler with failure-safe up
   3. `enqueueActive(accountId)`(异步触发,不 await 抓取完成);
   4. 立即返回 `202 { accepted: true, accountId }`。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 import { Store } from "./store/store.ts";
@@ -3158,12 +3183,12 @@ test("POST /fetch 返回 202 并即时插入不存在的账号", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/server.test.ts`
 Expected: FAIL(路由不存在)。
 
-- [ ] **Step 3: 实现(扩展 createServer)**
+- [x] **Step 3: 实现(扩展 createServer)**
 
 ```ts
 // src/server.ts
@@ -3203,18 +3228,19 @@ export function createServer(deps: ServerDeps): Elysia {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/server.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/server.ts src/server.test.ts
 git commit -m "feat: add POST /fetch async 202 with just-in-time account insert"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 24: HTTP — GET /status 与 GET /health 明细
@@ -3227,7 +3253,7 @@ git commit -m "feat: add POST /fetch async 202 with just-in-time account insert"
 - Consumes: `statusProvider`(Task 23 的 `ServerDeps`)
 - Produces:`GET /status` 返回 `statusProvider()` 的结果(装配层提供:在跑账号、各账号 next_run_at、失败重试队列等)。缺省时返回 `{ running: [], accounts: [] }`。
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 test("GET /status 返回 statusProvider 结果", async () => {
@@ -3246,29 +3272,30 @@ test("GET /status 无 provider 时返回空结构", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/server.test.ts`
 Expected: FAIL(/status 不存在)。
 
-- [ ] **Step 3: 实现(在 createServer 追加路由)**
+- [x] **Step 3: 实现(在 createServer 追加路由)**
 
 ```ts
   app.get("/status", () => deps.statusProvider?.() ?? { running: [], accounts: [] });
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `bun test src/server.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add src/server.ts src/server.test.ts
 git commit -m "feat: add GET /status observability endpoint"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 25: 服务装配与启动循环(index.ts 重写为服务入口)
@@ -3294,7 +3321,7 @@ git commit -m "feat: add GET /status observability endpoint"
   ```
   `buildApp` 装配 Store、TikTokAdapter、CosUploader(`createCosClient`)、CallbackSink(有 `instarCallbackUrl` 用 Http 否则 Noop)、FetchPipeline、Scheduler、HttpAccountListSource、Reconciler,并用 `createServer` 挂 `enqueueActive=(id)=>scheduler.runAccount(id, undefined, cfg.activeMaxPosts)`、`statusProvider`。`index.ts`:加载 config → `ensureYtDlp` → `new YtDlpRunner` → `buildApp(cfg, new SystemClock(), runner)` → `app.server.listen(port)` → `setInterval(tickOnce, cfg.scheduleTickMs)` + `setInterval(reconcileOnce, cfg.reconcileMs)`。
 
-- [ ] **Step 1: 写失败测试(装配冒烟,注入 fake runner + ManualClock + :memory:)**
+- [x] **Step 1: 写失败测试(装配冒烟,注入 fake runner + ManualClock + :memory:)**
 
 ```ts
 // src/app.test.ts
@@ -3330,12 +3357,12 @@ test("tickOnce 在无账号时返回 0", async () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `bun test src/app.test.ts`
 Expected: FAIL(模块不存在)。
 
-- [ ] **Step 3: 实现 app.ts**
+- [x] **Step 3: 实现 app.ts**
 
 ```ts
 // src/app.ts
@@ -3411,7 +3438,7 @@ export function buildApp(cfg: AppConfig, clock: Clock, runner: ProcessRunner): A
 }
 ```
 
-- [ ] **Step 4: 重写 index.ts 为服务入口**
+- [x] **Step 4: 重写 index.ts 为服务入口**
 
 ```ts
 // src/index.ts
@@ -3447,18 +3474,19 @@ if (import.meta.main) {
 }
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `bun test src/app.test.ts`
 Expected: PASS。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add src/app.ts src/app.test.ts src/index.ts
 git commit -m "feat: wire service assembly and rewrite index.ts as resident worker entry"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 26: 移除 CLI 主入口与废弃模块
@@ -3475,7 +3503,7 @@ git commit -m "feat: wire service assembly and rewrite index.ts as resident work
 - Consumes: 无
 - Produces:无新增。目标:全仓无对已删除模块的 import,`bun test` 与类型检查全绿。
 
-- [ ] **Step 1: 确认无外部引用后删除**
+- [x] **Step 1: 确认无外部引用后删除**
 
 Run: `bun run grep-check`(或用 grep 工具)确认无 `from "./parsing`、`from "./scheduling`、`from "./upload/uploader`、`ytdlp-manager/worker`、`from "../types"` 中对已删类型的引用残留。命令:
 
@@ -3484,7 +3512,7 @@ grep -rn "parsing/parser\|scheduling/\|upload/uploader\|ytdlp-manager/worker" sr
 ```
 Expected: 仅剩本任务将删除的文件自身(或 `no refs`)。
 
-- [ ] **Step 2: 删除文件**
+- [x] **Step 2: 删除文件**
 
 ```bash
 git rm src/parsing/parser.ts src/parsing/parser.test.ts \
@@ -3495,7 +3523,7 @@ git rm src/parsing/parser.ts src/parsing/parser.test.ts \
 git rm src/ytdlp-manager/worker.ts 2>/dev/null || true
 ```
 
-- [ ] **Step 3: 清理 types.ts**
+- [x] **Step 3: 清理 types.ts**
 
 将 `src/types.ts` 精简为仅服务侧仍用的类型:
 
@@ -3521,18 +3549,19 @@ export interface ProcessRunner {
 }
 ```
 
-- [ ] **Step 4: 跑全量测试与类型检查**
+- [x] **Step 4: 跑全量测试与类型检查**
 
 Run: `bun test && bunx tsc --noEmit`
 Expected: 全部 PASS,无类型错误,无对已删模块的引用。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add -A
 git commit -m "refactor: remove CLI entrypoint and obsolete parsing/scheduling/upload modules"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 27: 关键场景集成测试补全
@@ -3552,7 +3581,7 @@ git commit -m "refactor: remove CLI entrypoint and obsolete parsing/scheduling/u
   6. **主动触发与定时互斥**:同账号并发 `tick()` 与 `runAccount()` 只跑一次。
   7. **重启保留**:临时文件 Store 写 success 后新建 Store 仍去重。
 
-- [ ] **Step 1: 写这些集成测试(先全部失败/占位)**
+- [x] **Step 1: 写这些集成测试(先全部失败/占位)**
 
 按上述 7 项,每项一个 `test(...)`,复用前面任务里的 fake adapter 模式与 `ManualClock`。示例(升序处理):
 
@@ -3606,23 +3635,24 @@ test("按发布时间从旧到新处理", async () => {
 
 其余 6 项按同模式补全(每项独立 test,断言对应 spec 场景)。
 
-- [ ] **Step 2: 跑测试,逐项修正到通过**
+- [x] **Step 2: 跑测试,逐项修正到通过**
 
 Run: `bun test src/integration.test.ts`
 Expected: 全部 PASS。若某项失败,用 systematic-debugging 定位(多为 fake adapter 顺序或 ManualClock advance 时机),修正测试或回填被测实现缺口。
 
-- [ ] **Step 3: 跑全量回归**
+- [x] **Step 3: 跑全量回归**
 
 Run: `bun test`
 Expected: 全绿。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add src/integration.test.ts
 git commit -m "test: cover ordering, backoff, active-limit, mutual-exclusion, persistence scenarios"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ### Task 28: 更新 README / 部署说明(挂载 SQLite volume)
@@ -3634,7 +3664,7 @@ git commit -m "test: cover ordering, backoff, active-limit, mutual-exclusion, pe
 - Consumes: 无
 - Produces:文档说明服务运行方式与部署约束。
 
-- [ ] **Step 1: 写/更新 README**
+- [x] **Step 1: 写/更新 README**
 
 内容至少包含:
 - 服务简介(常驻 Elysia worker,替换旧 CLI)。
@@ -3643,18 +3673,19 @@ git commit -m "test: cover ordering, backoff, active-limit, mutual-exclusion, pe
 - 全部环境变量表(照搬 Design Doc 配置表,标必填:`ACCOUNT_LIST_URL`、`COS_*`)。
 - **Docker 部署必须挂载 SQLite 持久化目录**:`SQLITE_PATH` 指向挂载卷(如 `/data/worker.sqlite`),示例 `docker run -v tiktok-data:/data -e SQLITE_PATH=/data/worker.sqlite ...`;强调不挂载会导致重启丢去重/游标。
 
-- [ ] **Step 2: 校验文档内的命令可用**
+- [x] **Step 2: 校验文档内的命令可用**
 
 Run: `bun run src/index.ts`(设置最小必填 env,确认能启动并响应 `GET /health`;确认后 Ctrl-C)。或仅 `bun test` 保证不回归(文档任务无代码变更时)。
 Expected: 服务启动日志出现监听端口;`curl localhost:3000/health` 返回 `{"ok":true}`(手动可选)。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add README.md
 git commit -m "docs: document worker service, endpoints, env vars and sqlite volume mount"
 ```
 
+archived-with: 2026-07-04-serve-tiktok-download-worker
 ---
 
 ## Self-Review

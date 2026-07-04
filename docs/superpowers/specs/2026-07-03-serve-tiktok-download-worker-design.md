@@ -2,6 +2,8 @@
 comet_change: serve-tiktok-download-worker
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-07-04-serve-tiktok-download-worker
+status: final
 ---
 
 # TikTok 下载服务化技术设计

@@ -1,12 +1,24 @@
 import { test, expect } from "bun:test";
+import { Readable } from "node:stream";
 import { parse } from "./parser.ts";
-import type { ProcessResult, ProcessRunner } from "../types.ts";
+import type { ProcessResult, ProcessRunner, ProcessStream } from "../types.ts";
+
+function createEmptyStream(): ProcessStream {
+  return {
+    stdout: Readable.from([]),
+    stderr: Readable.from([]),
+    exited: Promise.resolve(0),
+  };
+}
 
 function fakeRunner(stdout: string, calls: string[][] = []): ProcessRunner {
   return {
     async run(args: string[]): Promise<ProcessResult> {
       calls.push(args);
       return { code: 0, stdout, stderr: "" };
+    },
+    runStream() {
+      return createEmptyStream();
     },
   };
 }
@@ -78,11 +90,14 @@ test("未指定 proxy 时不传 --proxy", async () => {
   expect(calls[0]).not.toContain("--proxy");
 });
 
-test("非法 JSON 抛错", async () => {
+test("非法 JSON 抛错", () => {
   const runner: ProcessRunner = {
     async run() {
       return { code: 0, stdout: "not-json", stderr: "" };
     },
+    runStream() {
+      return createEmptyStream();
+    },
   };
-  await expect(parse(runner, "https://x")).rejects.toThrow();
+  return expect(parse(runner, "https://x")).rejects.toThrow();
 });

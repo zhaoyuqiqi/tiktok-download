@@ -1,107 +1,218 @@
-import type { Config, Task, VideoInfo } from "./types.ts";
+import { join } from "node:path";
+import COS from "cos-nodejs-sdk-v5";
+import { loadServiceConfig } from "./config.ts";
+import { AccountSourceClient } from "./integration/accountSourceClient.ts";
+import { NoopInstarServerClient } from "./integration/instarServer.ts";
+import { debugLog, isDebugEnabled } from "./logging/debugLogger.ts";
+import { runAccountIngest, type MediaPipelineOptions } from "./pipeline/accountIngest.ts";
+import { TikTokAdapter } from "./platforms/tiktokAdapter.ts";
+import { reconcileAccounts } from "./scheduling/accountReconciler.ts";
+import { DueScheduler } from "./scheduling/dueScheduler.ts";
+import { createApp } from "./server.ts";
+import { initSchema, openDatabase } from "./storage/db.ts";
+import { StateRepository } from "./storage/repository.ts";
+import type { CosPutObjectInput } from "./upload/cosStreamUpload.ts";
 import { YtDlpRunner } from "./ytdlp-manager/runner.ts";
-import { ensureYtDlp } from "./ytdlp-manager/ytDlpManager.ts";
-import { parse } from "./parsing/parser.ts";
-import { createTask, TaskQueue } from "./scheduling/task.ts";
-import { download } from "./ytdlp-manager/worker.ts";
-import { runScheduler } from "./scheduling/scheduler.ts";
-import { NoopUploader } from "./upload/uploader.ts";
+import { YtDlpService } from "./ytdlp-manager/ytDlpService.ts";
 
-export function parseArgs(argv: string[]): Config {
-  let url: string | undefined;
-  let limit: number | undefined;
-  let workers = 2;
-  let retry = 2;
-  let outputDir = "./output";
-  let proxy: string | undefined;
+interface RawCosClient {
+  putObject(
+    input: CosPutObjectInput,
+    callback: (error: unknown, data: unknown) => void,
+  ): void;
+}
 
-  function numArg(name: string, raw: string | undefined): number {
-    const n = Number(raw);
-    if (raw === undefined || !Number.isFinite(n)) {
-      throw new Error(`${name} 需要一个数值,收到: ${raw ?? "(空)"}`);
-    }
-    return n;
-  }
+function createCosClient(config: {
+  secretId: string;
+  secretKey: string;
+}): RawCosClient {
+  return new COS({
+    SecretId: config.secretId,
+    SecretKey: config.secretKey,
+  }) as unknown as RawCosClient;
+}
 
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    switch (arg) {
-      case "--limit":
-        limit = numArg("--limit", argv[++i]);
-        break;
-      case "--workers":
-        workers = numArg("--workers", argv[++i]);
-        break;
-      case "--retry":
-        retry = numArg("--retry", argv[++i]);
-        break;
-      case "-o":
-      case "--output":
-        outputDir = argv[++i] ?? outputDir;
-        break;
-      case "--proxy":
-        proxy = argv[++i];
-        break;
-      default:
-        if (arg !== undefined && !arg.startsWith("-")) {
-          url = arg;
-        }
-    }
-  }
-
-  if (url === undefined) {
-    throw new Error("用法: download <url> [--limit N] [--workers 2] [--retry 2] [-o ./output] [--proxy URL]");
-  }
-
-  return { url, limit, workers, retry, outputDir, proxy };
+function createTraceId(accountId: string, source: "due" | "manual"): string {
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${Date.now()}-${source}-${accountId}-${rand}`;
 }
 
 export async function main(): Promise<void> {
-  let cfg: Config;
-  try {
-    cfg = parseArgs(Bun.argv.slice(2));
-  } catch (err) {
-    console.error((err as Error).message);
-    process.exit(1);
+  const port = Number(process.env.PORT ?? 3000);
+  const host = process.env.HOST ?? "0.0.0.0";
+
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`PORT 无效: ${process.env.PORT ?? "(空)"}`);
   }
 
-  let ytDlp;
-  try {
-    ytDlp = await ensureYtDlp({ toolDir: process.env.YT_DLP_TOOL_DIR });
-    if (ytDlp.updated) {
-      console.log(`yt-dlp 已升级到 ${ytDlp.latestVersion}`);
-    } else {
-      console.log(`yt-dlp 版本已是最新: ${ytDlp.latestVersion}`);
+  const config = loadServiceConfig();
+  const dbPath = join(config.dataDir, "state.db");
+  const db = openDatabase(dbPath);
+  initSchema(db);
+  const repo = new StateRepository(db);
+
+  const platform = "tiktok";
+  const ytDlpService = new YtDlpService();
+  let adapterPromise: Promise<TikTokAdapter> | null = null;
+  const getAdapter = async (): Promise<TikTokAdapter> => {
+    if (adapterPromise === null) {
+      adapterPromise = ytDlpService
+        .getBinaryPath()
+        .then((binPath) => new TikTokAdapter(new YtDlpRunner(binPath)));
     }
-  } catch (err) {
-    console.error("初始化 yt-dlp 失败:", (err as Error).message);
-    process.exit(1);
+    return adapterPromise;
+  };
+
+  const cosConfigured =
+    config.cos.bucket.length > 0 &&
+    config.cos.region.length > 0 &&
+    config.cos.secretId.length > 0 &&
+    config.cos.secretKey.length > 0;
+
+  if (!cosConfigured) {
+    throw new Error("COS 配置不完整：请至少配置 COS_BUCKET/COS_REGION/COS_SECRET_ID/COS_SECRET_KEY");
   }
 
-  const runner = new YtDlpRunner(ytDlp.currentPath);
+  const rawCosClient = createCosClient({
+    secretId: config.cos.secretId,
+    secretKey: config.cos.secretKey,
+  });
 
-  let videos: VideoInfo[];
-  try {
-    videos = await parse(runner, cfg.url, cfg.limit, cfg.proxy);
-  } catch (err) {
-    console.error("解析失败:", (err as Error).message);
-    process.exit(1);
-  }
+  const mediaPipeline: MediaPipelineOptions = {
+    cosClient: {
+      async putObject(input: CosPutObjectInput): Promise<unknown> {
+        return await new Promise((resolve, reject) => {
+          rawCosClient.putObject(input, (error, data) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve(data);
+          });
+        });
+      },
+    },
+    bucket: config.cos.bucket,
+    region: config.cos.region,
+    keyPrefix: config.cos.keyPrefix,
+    instarClient: new NoopInstarServerClient(),
+  };
 
-  const queue = new TaskQueue(videos.map(createTask));
-  const uploader = new NoopUploader();
+  const dueScheduler = new DueScheduler({
+    concurrency: config.globalConcurrency,
+    async listDueAccounts(limit) {
+      return repo.listDueAccounts({
+        platform,
+        nowIso: new Date().toISOString(),
+        limit,
+      });
+    },
+    async runAccount(accountId, source) {
+      const traceId = createTraceId(accountId, source);
+      debugLog("run_account.start", {
+        traceId,
+        platform,
+        accountId,
+        source,
+      });
 
-  const summary = await runScheduler(
-    queue,
-    { workers: cfg.workers, retry: cfg.retry },
-    (task: Task) => download(runner, task, cfg.outputDir, cfg.proxy),
-    uploader,
-  );
+      try {
+        const adapter = await getAdapter();
+        const result = await runAccountIngest({
+          platform,
+          accountId,
+          source,
+          repo,
+          adapter,
+          media: mediaPipeline,
+          proxy: config.proxy,
+          traceId,
+        });
 
-  console.log(`成功 ${summary.success} / 失败 ${summary.failed} / 共 ${summary.total}`);
-  if (summary.failed > 0) {
-    process.exitCode = 1;
-  }
+        debugLog("run_account.done", {
+          traceId,
+          platform,
+          accountId,
+          source,
+          result,
+        });
+      } catch (error) {
+        debugLog("run_account.failed", {
+          traceId,
+          accountId,
+          source,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    },
+  });
+
+  setInterval(() => {
+    void dueScheduler.tick();
+  }, config.fetchIntervalSeconds * 1000);
+
+  const accountSourceUrl = process.env.APP_ACCOUNT_SOURCE_URL?.trim() ?? "";
+  const accountSourceBearer = process.env.APP_ACCOUNT_SOURCE_AUTH_BEARER?.trim() ?? "";
+  const accountSourceClient =
+    accountSourceUrl.length > 0
+      ? new AccountSourceClient({
+          url: accountSourceUrl,
+          bearerToken: accountSourceBearer,
+        })
+      : null;
+
+  setInterval(() => {
+    if (accountSourceClient === null) {
+      return;
+    }
+
+    void (async () => {
+      debugLog("reconcile.start", { platform });
+      const accountIds = await accountSourceClient.fetchAccounts();
+      const result = reconcileAccounts(repo, {
+        platform,
+        accountIds,
+      });
+
+      debugLog("reconcile.done", { platform, result });
+    })().catch((error) => {
+      debugLog("reconcile.failed", {
+        platform,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, config.accountReconcileIntervalSeconds * 1000);
+
+  const app = createApp({
+    platform,
+    repo,
+    scheduler: dueScheduler,
+  });
+
+  app.listen({
+    hostname: host,
+    port,
+  });
+
+  debugLog("service.start", {
+    url: `http://${host}:${port}`,
+    debugEnabled: isDebugEnabled(),
+  });
+
+  debugLog("service.config", {
+    fetchIntervalSeconds: config.fetchIntervalSeconds,
+    accountReconcileIntervalSeconds: config.accountReconcileIntervalSeconds,
+    globalConcurrency: config.globalConcurrency,
+    proxy: config.proxy ? "configured" : null,
+    dataDir: config.dataDir,
+    cos: {
+      bucket: config.cos.bucket || null,
+      region: config.cos.region || null,
+      keyPrefix: config.cos.keyPrefix,
+      credentialsConfigured: Boolean(config.cos.secretId && config.cos.secretKey),
+    },
+  });
 }
 
 if (import.meta.main) {

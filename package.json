@@ -2,6 +2,10 @@
   "name": "tiktok-downloader",
   "module": "src/index.ts",
   "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "test": "bun test"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -10,6 +14,7 @@
   },
   "dependencies": {
     "@fission-ai/openspec": "^1.4.1",
-    "cos-nodejs-sdk-v5": "^2.15.4"
+    "cos-nodejs-sdk-v5": "^2.15.4",
+    "elysia": "^1.4.29"
   }
 }

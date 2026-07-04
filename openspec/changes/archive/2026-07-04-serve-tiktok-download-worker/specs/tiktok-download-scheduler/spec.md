@@ -11,7 +11,7 @@
 - **WHEN** 服务重启
 - **THEN** 已持久化的任务状态与重试计数仍然存在
 
-### Requirement: 并发执行
+### Requirement: Worker 池并发执行
 系统 SHALL 通过全局并发上限(默认 2,可配置)控制同时进行的抓取任务数量,任意时刻活跃抓取任务数 SHALL NOT 超过该上限。系统 SHALL 保证同一账号的抓取串行执行。
 
 #### Scenario: 并发数受全局上限约束
@@ -33,7 +33,7 @@
 - **WHEN** 某帖子在 3 次退避重试后仍失败
 - **THEN** 该任务标记为 failed,其余任务不受影响
 
-### Requirement: 下载成功后上传
+### Requirement: 下载成功后上传 hook
 系统 SHALL 在每个帖子视频抓取成功后,将视频流上传到 COS 对象存储。上传 SHALL NOT 阻塞其他任务;系统在退出前 SHALL 等待已触发的上传收敛。系统 SHALL 通过纯函数生成 COS 对象 key。
 
 #### Scenario: 抓取成功触发 COS 上传
@@ -54,6 +54,3 @@
 **Reason**: CLI `--proxy` 命令行参数语义随 CLI 入口移除;代理改由服务配置管理。
 **Migration**: 代理配置改由服务侧环境变量/配置项提供,并在 yt-dlp 调用时透传;不再通过命令行 `--proxy` 传入。
 
-### Requirement: Worker 池并发执行
-**Reason**: `--workers` 命令行参数与固定 worker 池、本地 `./output` 落地语义被服务化并发模型取代。
-**Migration**: 使用本 delta 的“并发执行”要求(全局并发上限 + 同账号串行)与 `tiktok-fetch-pipeline` 的“视频流直传 COS”(不落地本地磁盘)。

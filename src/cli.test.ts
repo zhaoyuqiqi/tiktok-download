@@ -1,56 +1,126 @@
-import { test, expect } from "bun:test";
-import { parseArgs } from "./index.ts";
+import { describe, expect, it } from "bun:test";
+import { createApp } from "./server.ts";
 
-test("默认值:workers=2 retry=2 outputDir=./output limit 未定义", () => {
-  const cfg = parseArgs(["https://tiktok.com/@u/video/1"]);
-  expect(cfg.url).toBe("https://tiktok.com/@u/video/1");
-  expect(cfg.workers).toBe(2);
-  expect(cfg.retry).toBe(2);
-  expect(cfg.outputDir).toBe("./output");
-  expect(cfg.limit).toBeUndefined();
-});
+describe("HTTP 服务入口", () => {
+  it("GET /health 返回服务状态", async () => {
+    const app = createApp();
+    const response = await app.handle(new Request("http://localhost/health"));
+    const payload = await response.json();
 
-test("解析 --limit --workers --retry -o", () => {
-  const cfg = parseArgs([
-    "https://tiktok.com/@u",
-    "--limit",
-    "5",
-    "--workers",
-    "3",
-    "--retry",
-    "4",
-    "-o",
-    "./videos",
-  ]);
-  expect(cfg.url).toBe("https://tiktok.com/@u");
-  expect(cfg.limit).toBe(5);
-  expect(cfg.workers).toBe(3);
-  expect(cfg.retry).toBe(4);
-  expect(cfg.outputDir).toBe("./videos");
-});
+    expect(response.status).toBe(200);
+    expect(payload.status).toBe("ok");
+    expect(payload.service).toBe("tiktok-downloader");
+    expect(typeof payload.timestamp).toBe("string");
+  });
 
-test("解析 --proxy", () => {
-  const cfg = parseArgs(["https://tiktok.com/@u/video/1", "--proxy", "http://127.0.0.1:7890"]);
-  expect(cfg.proxy).toBe("http://127.0.0.1:7890");
-});
+  it("POST /fetch 受理主动触发并入队", async () => {
+    const triggerCalls: string[] = [];
+    const upserts: string[] = [];
 
-test("默认无 proxy", () => {
-  const cfg = parseArgs(["https://tiktok.com/@u/video/1"]);
-  expect(cfg.proxy).toBeUndefined();
-});
+    const app = createApp({
+      repo: {
+        getAccount: () => null,
+        upsertAccount: ({ accountId }) => {
+          upserts.push(accountId);
+          return {
+            platform: "tiktok",
+            accountId,
+            nextRunAt: "2026-07-03T10:00:00Z",
+            lastPostAt: null,
+            lastVideoId: null,
+            active: true,
+          };
+        },
+        listAccounts: () => [],
+        countAccounts: () => 0,
+        countDueAccounts: () => 0,
+        countFetchedPosts: () => 0,
+      },
+      scheduler: {
+        runningCount: 0,
+        async trigger(accountId) {
+          triggerCalls.push(accountId);
+        },
+      },
+    });
 
-test("缺少 url 抛错", () => {
-  expect(() => parseArgs([])).toThrow();
-});
+    const response = await app.handle(
+      new Request("http://localhost/fetch", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ accountId: "@alice" }),
+      }),
+    );
 
-test("--workers 非数值抛错", () => {
-  expect(() => parseArgs(["https://x", "--workers", "abc"])).toThrow();
-});
+    const payload = await response.json();
+    expect(response.status).toBe(202);
+    expect(payload.accepted).toBeTrue();
+    expect(triggerCalls).toEqual(["@alice"]);
+    expect(upserts).toEqual(["@alice"]);
+  });
 
-test("--retry 缺值抛错", () => {
-  expect(() => parseArgs(["https://x", "--retry"])).toThrow();
-});
+  it("POST /fetch 缺少 accountId 返回 400", async () => {
+    const app = createApp();
+    const response = await app.handle(
+      new Request("http://localhost/fetch", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }),
+    );
 
-test("--limit 非数值抛错", () => {
-  expect(() => parseArgs(["https://x", "--limit", "xx"])).toThrow();
+    expect(response.status).toBe(400);
+  });
+
+  it("GET /status 返回调度与账号状态", async () => {
+    const app = createApp({
+      repo: {
+        getAccount: () => null,
+        upsertAccount: () => {
+          throw new Error("should not upsert in /status");
+        },
+        listAccounts: () => [
+          {
+            platform: "tiktok",
+            accountId: "@alice",
+            nextRunAt: "2026-07-03T10:00:00Z",
+            lastPostAt: null,
+            lastVideoId: null,
+            active: true,
+          },
+        ],
+        countAccounts: (_platform, active) => (active === undefined ? 1 : active ? 1 : 0),
+        countDueAccounts: () => 1,
+        countFetchedPosts: () => 3,
+      },
+      scheduler: {
+        runningCount: 1,
+        async trigger() {},
+      },
+      now: () => new Date("2026-07-03T10:00:00Z"),
+    });
+
+    const response = await app.handle(new Request("http://localhost/status"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.scheduler.runningCount).toBe(1);
+    expect(payload.accounts.total).toBe(1);
+    expect(payload.accounts.active).toBe(1);
+    expect(payload.accounts.inactive).toBe(0);
+    expect(payload.accounts.due).toBe(1);
+    expect(payload.fetched.total).toBe(3);
+    expect(payload.accounts.items[0]?.accountId).toBe("@alice");
+  });
+
+  it("未知路由返回 404", async () => {
+    const app = createApp();
+    const response = await app.handle(new Request("http://localhost/not-found"));
+
+    expect(response.status).toBe(404);
+  });
 });
