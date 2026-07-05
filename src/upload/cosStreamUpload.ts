@@ -33,6 +33,7 @@ export interface UploadRemoteUrlToCosInput {
   region: string;
   key: string;
   traceId?: string;
+  proxy?: string;
   fetchImpl?: FetchLike;
 }
 
@@ -106,6 +107,17 @@ export async function uploadPostStreamToCos(input: UploadPostStreamToCosInput): 
   });
 }
 
+function withProxy(proxy: string | undefined, init: RequestInit = {}): RequestInit & { proxy?: string } {
+  if (proxy === undefined || proxy.length === 0) {
+    return init as RequestInit & { proxy?: string };
+  }
+
+  return {
+    ...init,
+    proxy,
+  } as RequestInit & { proxy?: string };
+}
+
 export async function uploadRemoteUrlToCos(input: UploadRemoteUrlToCosInput): Promise<void> {
   const fetchImpl = input.fetchImpl ?? fetch;
 
@@ -115,7 +127,7 @@ export async function uploadRemoteUrlToCos(input: UploadRemoteUrlToCosInput): Pr
     key: input.key,
   });
 
-  const response = await fetchImpl(input.sourceUrl);
+  const response = await fetchImpl(input.sourceUrl, withProxy(input.proxy));
   if (!response.ok || response.body === null) {
     throw new Error(`远程资源下载失败: ${response.status} ${response.statusText}`);
   }

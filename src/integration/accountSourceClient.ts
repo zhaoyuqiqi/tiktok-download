@@ -59,7 +59,7 @@ export class AccountSourceClient {
         throw new Error("账号名单返回格式无效，期望 list 元素包含 starId");
       }
 
-      const rawStarId = (item as { starId?: unknown }).starId;
+      const rawStarId = (item as { starId?: string }).starId;
       if (typeof rawStarId !== "string") {
         throw new Error("账号名单返回格式无效，starId 必须是字符串");
       }

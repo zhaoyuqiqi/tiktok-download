@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Readable } from "node:stream";
 import type { PlatformAdapter, PlatformPostRef, Post } from "../platforms/adapter.ts";
-import { uploadPostStreamToCos } from "./cosStreamUpload.ts";
+import { uploadPostStreamToCos, uploadRemoteUrlToCos } from "./cosStreamUpload.ts";
 
 const post: Post = {
   platform: "tiktok",
@@ -83,5 +83,35 @@ describe("uploadPostStreamToCos", () => {
         key: "video/tiktok/alice/v1.mp4",
       }),
     ).rejects.toThrow("媒体流读取失败");
+  });
+});
+
+describe("uploadRemoteUrlToCos", () => {
+  it("指定 proxy 时透传给 fetch", async () => {
+    let gotProxy: string | undefined;
+    let gotBody = false;
+
+    const cos = {
+      async putObject(input: { Body: NodeJS.ReadableStream }) {
+        gotBody = typeof (input.Body as Readable).pipe === "function";
+        return { etag: "ok" };
+      },
+    };
+
+    await uploadRemoteUrlToCos({
+      sourceUrl: "https://img.example.com/a.jpg",
+      cosClient: cos,
+      bucket: "bucket-1",
+      region: "ap-guangzhou",
+      key: "video/tiktok/alice/a.jpg",
+      proxy: "http://127.0.0.1:7890",
+      fetchImpl: async (_url, init?: RequestInit & { proxy?: string }) => {
+        gotProxy = init?.proxy;
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      },
+    });
+
+    expect(gotProxy).toBe("http://127.0.0.1:7890");
+    expect(gotBody).toBeTrue();
   });
 });

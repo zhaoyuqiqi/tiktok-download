@@ -173,6 +173,7 @@ async function uploadImagePostMedia(
     region: media.region,
     key: imageObjectKey,
     traceId: input.traceId,
+    proxy: input.proxy,
     fetchImpl: media.fetchImpl,
   });
 
@@ -225,6 +226,7 @@ async function uploadVideoPostMedia(
     region: media.region,
     key: thumbnailObjectKey,
     traceId: input.traceId,
+    proxy: input.proxy,
     fetchImpl: media.fetchImpl,
   });
 
