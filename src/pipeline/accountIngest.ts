@@ -80,8 +80,17 @@ export interface RunAccountIngestInput {
   media?: MediaPipelineOptions;
   proxy?: string;
   manualLimit?: number;
+  manualCategoryId?: number;
   now?: () => Date;
   traceId?: string;
+  beforeFetchPosts?: (input: {
+    platform: string;
+    accountId: string;
+    source: "due" | "manual";
+    proxy?: string;
+    traceId?: string;
+    categoryId?: number;
+  }) => Promise<void>;
   onPostSynced?: (event: PostSyncedEvent) => Promise<void>;
 }
 
@@ -317,6 +326,17 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
   let newCount = 0;
   let latestListedPostId: string | undefined;
   let latestPublishedAt = existing?.lastPostAt ?? null;
+
+  if (input.beforeFetchPosts !== undefined) {
+    await input.beforeFetchPosts({
+      platform: input.platform,
+      accountId: input.accountId,
+      source: input.source,
+      proxy: input.proxy,
+      traceId: input.traceId,
+      categoryId: input.source === "manual" ? input.manualCategoryId : undefined,
+    });
+  }
 
   for await (const post of collectNewPostsStream(input.adapter, {
     accountId: input.accountId,

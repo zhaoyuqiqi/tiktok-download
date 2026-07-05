@@ -5,10 +5,13 @@ import { AccountSourceClient } from "./integration/accountSourceClient.ts";
 import {
   HttpInstarPostSyncClient,
   HttpInstarServerClient,
+  HttpInstarStarExistsClient,
+  HttpInstarStarSyncClient,
   NoopInstarServerClient,
   toInstarAccountCompletedPayload,
   toInstarPostSyncedPayload,
 } from "./integration/instarServer.ts";
+import { syncTikTokProfileBeforeFetch } from "./integration/tiktokProfileSync.ts";
 import { debugLog, isDebugEnabled } from "./logging/debugLogger.ts";
 import { runAccountIngest, type MediaPipelineOptions } from "./pipeline/accountIngest.ts";
 import { TikTokAdapter } from "./platforms/tiktokAdapter.ts";
@@ -64,6 +67,37 @@ export function assertRequiredWebhookEnv(env: NodeJS.ProcessEnv): {
     postWebhookUrl,
     postWebhookBearer,
   };
+}
+
+function resolveStarSyncUrl(explicitUrl: string, postWebhookUrl: string): string {
+  if (explicitUrl.length > 0) {
+    return explicitUrl;
+  }
+
+  if (postWebhookUrl.length === 0) {
+    return "";
+  }
+
+  try {
+    const u = new URL(postWebhookUrl);
+    u.pathname = "/star/api/sync";
+    u.search = "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+function resolveStarExistsUrl(explicitUrl: string, syncUrl: string): string {
+  if (explicitUrl.length > 0) {
+    return explicitUrl;
+  }
+
+  if (syncUrl.endsWith("/sync")) {
+    return `${syncUrl.slice(0, -"/sync".length)}/crawler/exists`;
+  }
+
+  return "";
 }
 
 export async function main(): Promise<void> {
@@ -146,6 +180,32 @@ export async function main(): Promise<void> {
     bearerToken: instarPostWebhookBearer,
   });
 
+  const instarStarSyncUrl = resolveStarSyncUrl(
+    process.env.APP_INSTAR_STAR_SYNC_URL?.trim() ?? "",
+    instarPostWebhookUrl,
+  );
+  const instarStarSyncBearer = process.env.APP_INSTAR_STAR_SYNC_AUTH_BEARER?.trim() ?? "";
+  const instarStarExistsUrl = resolveStarExistsUrl(
+    process.env.APP_INSTAR_STAR_EXISTS_URL?.trim() ?? "",
+    instarStarSyncUrl,
+  );
+
+  const instarStarSyncClient =
+    instarStarSyncUrl.length > 0
+      ? new HttpInstarStarSyncClient({
+          url: instarStarSyncUrl,
+          bearerToken: instarStarSyncBearer,
+        })
+      : null;
+
+  const instarStarExistsClient =
+    instarStarExistsUrl.length > 0
+      ? new HttpInstarStarExistsClient({
+          url: instarStarExistsUrl,
+          bearerToken: instarStarSyncBearer,
+        })
+      : null;
+
   const dueScheduler = new DueScheduler({
     concurrency: config.globalConcurrency,
     async listDueAccounts(limit) {
@@ -175,7 +235,25 @@ export async function main(): Promise<void> {
           media: mediaPipeline,
           proxy: config.proxy,
           manualLimit: source === "manual" ? options?.limit : undefined,
+          manualCategoryId: source === "manual" ? options?.categoryId : undefined,
           traceId,
+          beforeFetchPosts:
+            instarStarSyncClient !== null && instarStarExistsClient !== null
+              ? async (beforeFetchInput) => {
+                  await syncTikTokProfileBeforeFetch(
+                    {
+                      accountId: beforeFetchInput.accountId,
+                      proxy: beforeFetchInput.proxy,
+                      traceId: beforeFetchInput.traceId,
+                      categoryId: beforeFetchInput.categoryId,
+                    },
+                    {
+                      existsClient: instarStarExistsClient,
+                      syncClient: instarStarSyncClient,
+                    },
+                  );
+                }
+              : undefined,
           onPostSynced: async (event) => {
             await instarPostSyncClient.notifyPostSynced(
               toInstarPostSyncedPayload({
@@ -301,6 +379,11 @@ export async function main(): Promise<void> {
       region: config.cos.region || null,
       keyPrefix: config.cos.keyPrefix,
       credentialsConfigured: Boolean(config.cos.secretId && config.cos.secretKey),
+    },
+    instarStarSync: {
+      enabled: instarStarSyncClient !== null && instarStarExistsClient !== null,
+      syncUrlConfigured: instarStarSyncUrl.length > 0,
+      existsUrlConfigured: instarStarExistsUrl.length > 0,
     },
   });
 }

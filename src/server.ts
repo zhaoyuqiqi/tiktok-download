@@ -55,17 +55,20 @@ function normalizeAccountIdentifier(body: unknown): string {
   return (accountIdRaw ?? starIdRaw ?? "").trim();
 }
 
-function normalizeManualLimit(body: unknown): number | undefined | "invalid" {
+function parseOptionalIntegerField(
+  body: unknown,
+  fieldName: string,
+): number | undefined | "invalid" {
   if (typeof body !== "object" || body === null) {
     return undefined;
   }
 
   const payload = body as Record<string, unknown>;
-  if (!("limit" in payload) || payload.limit === undefined || payload.limit === null) {
+  const raw = payload[fieldName];
+  if (raw === undefined || raw === null) {
     return undefined;
   }
 
-  const raw = payload.limit;
   const parsed =
     typeof raw === "number"
       ? raw
@@ -73,7 +76,29 @@ function normalizeManualLimit(body: unknown): number | undefined | "invalid" {
         ? Number(raw)
         : Number.NaN;
 
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+  return Number.isSafeInteger(parsed) ? parsed : "invalid";
+}
+
+function normalizeManualLimit(body: unknown): number | undefined | "invalid" {
+  const parsed = parseOptionalIntegerField(body, "limit");
+  if (parsed === undefined || parsed === "invalid") {
+    return parsed;
+  }
+
+  if (parsed < 1 || parsed > 100) {
+    return "invalid";
+  }
+
+  return parsed;
+}
+
+function normalizeCategoryId(body: unknown): number | undefined | "invalid" {
+  const parsed = parseOptionalIntegerField(body, "categoryId");
+  if (parsed === undefined || parsed === "invalid") {
+    return parsed;
+  }
+
+  if (parsed < -1) {
     return "invalid";
   }
 
@@ -93,6 +118,7 @@ export function createApp(options: CreateAppOptions = {}) {
     .post("/fetch", async ({ body, set }) => {
       const accountId = normalizeAccountIdentifier(body);
       const manualLimit = normalizeManualLimit(body);
+      const categoryId = normalizeCategoryId(body);
 
       if (accountId.length === 0) {
         set.status = 400;
@@ -102,6 +128,11 @@ export function createApp(options: CreateAppOptions = {}) {
       if (manualLimit === "invalid") {
         set.status = 400;
         return { error: "limit 必须是 1~100 的正整数" };
+      }
+
+      if (categoryId === "invalid") {
+        set.status = 400;
+        return { error: "categoryId 必须是大于等于 -1 的整数" };
       }
 
       if (options.repo !== undefined && options.scheduler !== undefined) {
@@ -126,6 +157,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
         await options.scheduler.trigger(accountId, {
           limit: manualLimit,
+          categoryId,
         });
       }
 
@@ -136,6 +168,7 @@ export function createApp(options: CreateAppOptions = {}) {
         starId: accountId,
         source: "manual",
         limit: manualLimit ?? 100,
+        categoryId,
       };
     })
     .get("/status", () => {

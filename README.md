@@ -49,6 +49,32 @@ bun run src/index.ts
 
 默认监听：`HOST=0.0.0.0`，`PORT=3000`。
 
+## 完整跑起来前你需要准备什么
+
+最少需要准备这 4 类信息：
+
+- 抓取侧：是否需要代理（可选，`APP_PROXY_URL`）
+- 存储侧：COS 凭据（`COS_BUCKET/COS_REGION/COS_SECRET_ID/COS_SECRET_KEY`，必填）
+- 回传侧：`instar-server` 接口地址（至少 `APP_INSTAR_POST_WEBHOOK_URL` 必填）
+- 账号源（可选）：`APP_ACCOUNT_SOURCE_URL` 与其 Bearer
+
+如果你只想先验证“服务能跑 + 手动抓取 + 回传 instar”，建议先配置：
+
+```bash
+# 必填：帖子回传（instar-server）
+APP_INSTAR_POST_WEBHOOK_URL=http://<instar-host>:<instar-port>/post/api/sync
+
+# 建议补齐：明星资料同步 + 存在性查询（可显式给，也可走自动推导）
+APP_INSTAR_STAR_SYNC_URL=http://<instar-host>:<instar-port>/star/api/sync
+APP_INSTAR_STAR_EXISTS_URL=http://<instar-host>:<instar-port>/star/api/crawler/exists
+
+# 必填：COS
+COS_BUCKET=...
+COS_REGION=...
+COS_SECRET_ID=...
+COS_SECRET_KEY=...
+```
+
 ## 核心环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -67,13 +93,16 @@ bun run src/index.ts
 | `APP_INSTAR_WEBHOOK_AUTH_BEARER` | 空 | 账号完成回调 Bearer Token |
 | `APP_INSTAR_POST_WEBHOOK_URL` | 空 | **必填**：帖子抓取成功后逐条同步回调地址（缺失则服务启动报错） |
 | `APP_INSTAR_POST_WEBHOOK_AUTH_BEARER` | 空 | 帖子逐条回调 Bearer Token |
+| `APP_INSTAR_STAR_SYNC_URL` | 空 | 明星资料同步地址（可选）；为空时会尝试由 `APP_INSTAR_POST_WEBHOOK_URL` 自动推导为同域 `/star/api/sync` |
+| `APP_INSTAR_STAR_SYNC_AUTH_BEARER` | 空 | 明星资料同步 / 存在性查询共用 Bearer Token |
+| `APP_INSTAR_STAR_EXISTS_URL` | 空 | 明星存在性查询地址（可选）；为空时且 `APP_INSTAR_STAR_SYNC_URL` 以 `/sync` 结尾时，自动推导为同路径 `/crawler/exists` |
+| `COS_BUCKET` | 空 | COS bucket（必填；缺失会导致服务启动报错） |
+| `COS_REGION` | 空 | COS region（必填；缺失会导致服务启动报错） |
+| `COS_SECRET_ID` | 空 | COS secret id（必填；缺失会导致服务启动报错） |
+| `COS_SECRET_KEY` | 空 | COS secret key（必填；缺失会导致服务启动报错） |
+| `COS_KEY_PREFIX` | `tiktok-download` | COS key 前缀 |
 
-> 帖子级回调说明：同步 payload 现在严格遵循 `crawler-ins` 的 `Post` 契约（`insPostId/starName/fullName/title/isTop/insStarId/publishTime/resources`），且**不再传 `cosKey`**；当视频上传到 COS 后，会将 COS 可访问地址写入 `resources[].url`。平台字段映射集中在 `src/integration/postFormatters/`，后续新增平台可直接新增对应 formatter 文件。
-| `COS_BUCKET` | 空 | COS bucket（预留/兼容） |
-| `COS_REGION` | 空 | COS region（预留/兼容） |
-| `COS_SECRET_ID` | 空 | COS secret id（预留/兼容） |
-| `COS_SECRET_KEY` | 空 | COS secret key（预留/兼容） |
-| `COS_KEY_PREFIX` | `tiktok` | COS key 前缀（预留/兼容） |
+> 帖子级回调说明：同步 payload 严格遵循 `crawler-ins` 的 `Post` 契约（`insPostId/starName/fullName/title/isTop/insStarId/publishTime/resources`），且**不再传 `cosKey`**；上传到 COS 后，会将 COS 资源地址写入 `resources[].url`。
 
 开启 debug 日志示例：
 
@@ -97,9 +126,15 @@ APP_DEBUG=1 bun run src/index.ts
 
 ```json
 {
-  "starId": "@alice"
+  "starId": "@alice",
+  "limit": 3,
+  "categoryId": 7
 }
 ```
+
+字段说明：
+- `limit`：可选，`1~100` 的整数，仅影响本次手动抓取条数。
+- `categoryId`：可选，大于等于 `-1` 的整数，仅用于手动触发时透传到明星资料同步。
 
 响应（`202 Accepted`）：
 
@@ -108,7 +143,9 @@ APP_DEBUG=1 bun run src/index.ts
   "accepted": true,
   "accountId": "@alice",
   "starId": "@alice",
-  "source": "manual"
+  "source": "manual",
+  "limit": 3,
+  "categoryId": 7
 }
 ```
 
@@ -117,8 +154,10 @@ APP_DEBUG=1 bun run src/index.ts
 ```bash
 curl -X POST http://127.0.0.1:3000/fetch \
   -H 'content-type: application/json' \
-  -d '{"starId":"@alice"}'
+  -d '{"starId":"@alice","limit":3,"categoryId":7}'
 ```
+
+> 自动 `tick` 的 due 抓取不会携带 `categoryId`；仅手动 `POST /fetch` 触发时会传该参数。
 
 ### `GET /status`
 
@@ -129,6 +168,34 @@ curl -X POST http://127.0.0.1:3000/fetch \
 - 去重表累计抓取记录数
 
 ## instar 对接契约
+
+### 回传到 instar-server：地址怎么传、该传什么
+
+推荐显式配置这 3 个地址：
+
+- `APP_INSTAR_POST_WEBHOOK_URL` → `POST /post/api/sync`（**必填**）
+- `APP_INSTAR_STAR_SYNC_URL` → `POST /star/api/sync`（可选，建议配置）
+- `APP_INSTAR_STAR_EXISTS_URL` → `GET /star/api/crawler/exists?starName=xxx`（可选，建议配置）
+
+如果你不想显式配置后两个地址，也可以只给 `APP_INSTAR_POST_WEBHOOK_URL`，程序会按如下规则自动推导：
+
+1. `APP_INSTAR_STAR_SYNC_URL` 为空时：取 `APP_INSTAR_POST_WEBHOOK_URL` 的同域地址并替换路径为 `/star/api/sync`
+2. `APP_INSTAR_STAR_EXISTS_URL` 为空且 `APP_INSTAR_STAR_SYNC_URL` 以 `/sync` 结尾时：将其改写为 `/crawler/exists`
+
+例如：
+
+- 已配置 `APP_INSTAR_POST_WEBHOOK_URL=http://127.0.0.1:3000/post/api/sync`
+- 则默认推导：
+  - `APP_INSTAR_STAR_SYNC_URL=http://127.0.0.1:3000/star/api/sync`
+  - `APP_INSTAR_STAR_EXISTS_URL=http://127.0.0.1:3000/star/api/crawler/exists`
+
+Bearer 传参方式：
+
+- 帖子回传 Bearer：`APP_INSTAR_POST_WEBHOOK_AUTH_BEARER`
+- 明星资料同步 + 存在性查询 Bearer：`APP_INSTAR_STAR_SYNC_AUTH_BEARER`
+- 账号完成回调 Bearer：`APP_INSTAR_WEBHOOK_AUTH_BEARER`
+
+> 说明：当前 `instar-server` 的 `post/api/sync`、`star/api/sync`、`star/api/crawler/exists` 路由默认未强制 JWT 中间件，但 downloader 仍支持带 Bearer，便于网关层鉴权。
 
 ### 账号列表接口（tiktok 定时拉取）
 

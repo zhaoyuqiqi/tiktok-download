@@ -27,7 +27,12 @@ describe("DueScheduler", () => {
   });
 
   it("外部 trigger 与 due tick 共用同一 runAccount 流水线", async () => {
-    const calls: Array<{ accountId: string; source: "due" | "manual"; limit?: number }> = [];
+    const calls: Array<{
+      accountId: string;
+      source: "due" | "manual";
+      limit?: number;
+      categoryId?: number;
+    }> = [];
     let releaseManual!: () => void;
     const manualBlocker = new Promise<void>((resolve) => {
       releaseManual = resolve;
@@ -40,14 +45,14 @@ describe("DueScheduler", () => {
         return [{ platform: "tiktok", accountId: "due-account" }];
       },
       async runAccount(accountId, source, options) {
-        calls.push({ accountId, source, limit: options?.limit });
+        calls.push({ accountId, source, limit: options?.limit, categoryId: options?.categoryId });
         if (source === "manual") {
           await manualBlocker;
         }
       },
     });
 
-    await scheduler.trigger("manual-account", { limit: 3 });
+    await scheduler.trigger("manual-account", { limit: 3, categoryId: 7 });
     await Bun.sleep(0);
     await scheduler.tick();
     await Bun.sleep(0);
@@ -55,8 +60,8 @@ describe("DueScheduler", () => {
     await Bun.sleep(0);
 
     expect(calls).toEqual([
-      { accountId: "manual-account", source: "manual", limit: 3 },
-      { accountId: "due-account", source: "due", limit: undefined },
+      { accountId: "manual-account", source: "manual", limit: 3, categoryId: 7 },
+      { accountId: "due-account", source: "due", limit: undefined, categoryId: undefined },
     ]);
   });
 

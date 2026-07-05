@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test";
 import {
   HttpInstarPostSyncClient,
   HttpInstarServerClient,
+  HttpInstarStarExistsClient,
+  HttpInstarStarSyncClient,
   NoopInstarServerClient,
   toInstarAccountCompletedPayload,
   toInstarPostSyncedPayload,
@@ -191,6 +193,99 @@ describe("instarServer adapter layer", () => {
         ],
       }),
     ).rejects.toThrow("instar 帖子回调失败");
+  });
+
+  it("HttpInstarStarSyncClient: 请求成功时发送明星资料", async () => {
+    let gotBody = "";
+
+    const client = new HttpInstarStarSyncClient({
+      url: "https://example.com/star-sync",
+      bearerToken: "token-3",
+      fetchImpl: async (_url, init) => {
+        gotBody = String(init?.body ?? "");
+        return new Response("ok", { status: 200 });
+      },
+    });
+
+    await client.syncStarProfile({
+      insStarId: "6557999606692954114",
+      starName: "yua_mikami",
+      fullName: "三上悠亜",
+      zhName: "三上悠亜",
+      avatar: "https://img.example.com/a.jpg",
+      postCount: 1509,
+      followerCount: 4850008,
+      followingCount: 73,
+      categoryId: -1,
+      isDel: 0,
+    });
+
+    expect(JSON.parse(gotBody)).toEqual({
+      insStarId: "6557999606692954114",
+      starName: "yua_mikami",
+      fullName: "三上悠亜",
+      zhName: "三上悠亜",
+      avatar: "https://img.example.com/a.jpg",
+      postCount: 1509,
+      followerCount: 4850008,
+      followingCount: 73,
+      categoryId: -1,
+      isDel: 0,
+    });
+  });
+
+  it("HttpInstarStarSyncClient: categoryId 未定义时不发送该字段", async () => {
+    let gotBody = "";
+
+    const client = new HttpInstarStarSyncClient({
+      url: "https://example.com/star-sync",
+      fetchImpl: async (_url, init) => {
+        gotBody = String(init?.body ?? "");
+        return new Response("ok", { status: 200 });
+      },
+    });
+
+    await client.syncStarProfile({
+      insStarId: "6557999606692954114",
+      starName: "yua_mikami",
+      fullName: "三上悠亜",
+      zhName: "三上悠亜",
+      avatar: "https://img.example.com/a.jpg",
+      postCount: 1509,
+      followerCount: 4850008,
+      followingCount: 73,
+      isDel: 0,
+    });
+
+    expect(JSON.parse(gotBody)).toEqual({
+      insStarId: "6557999606692954114",
+      starName: "yua_mikami",
+      fullName: "三上悠亜",
+      zhName: "三上悠亜",
+      avatar: "https://img.example.com/a.jpg",
+      postCount: 1509,
+      followerCount: 4850008,
+      followingCount: 73,
+      isDel: 0,
+    });
+  });
+
+  it("HttpInstarStarExistsClient: 能解析 exists 响应", async () => {
+    let gotUrl = "";
+
+    const client = new HttpInstarStarExistsClient({
+      url: "https://example.com/star-exists",
+      fetchImpl: async (url) => {
+        gotUrl = String(url);
+        return new Response(JSON.stringify({ code: 0, data: { exists: true } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    await expect(client.isStarExists("yua_mikami")).resolves.toBeTrue();
+    expect(gotUrl).toBe("https://example.com/star-exists?starName=yua_mikami");
   });
 
   it("NoopInstarServerClient: 默认不抛错", async () => {

@@ -649,4 +649,167 @@ describe("runAccountIngest", () => {
 
     expect(repo.isFetched("tiktok", "v-1")).toBeFalse();
   });
+
+  it("抓取前会先执行 beforeFetchPosts 钩子", async () => {
+    const repo = createRepo();
+    const events: string[] = [];
+
+    const adapter: PlatformAdapter = {
+      platform: "tiktok",
+      async listPosts(accountId) {
+        events.push("list");
+        return [
+          {
+            platform: "tiktok",
+            accountId,
+            postId: "v-1",
+            url: `https://www.tiktok.com/@${accountId}/video/1`,
+          },
+        ];
+      },
+      async fetchDetail(ref) {
+        return {
+          id: ref.postId,
+          webpage_url: ref.url,
+          timestamp: 1_720_000_001,
+        };
+      },
+      cleanse(detail, ref) {
+        const data = detail as { id: string; webpage_url: string; timestamp: number };
+        return {
+          platform: "tiktok",
+          accountId: ref.accountId,
+          postId: data.id,
+          sourceUrl: data.webpage_url,
+          publishedAt: new Date(data.timestamp * 1000).toISOString(),
+        };
+      },
+      async openMediaStream(): Promise<ProcessStream> {
+        throw new Error("not used in this test");
+      },
+    };
+
+    await runAccountIngest({
+      platform: "tiktok",
+      accountId: "@alice",
+      source: "due",
+      repo,
+      adapter,
+      beforeFetchPosts: async (hookInput) => {
+        expect(hookInput.categoryId).toBeUndefined();
+        events.push("before");
+      },
+      now: () => new Date("2026-07-03T10:00:00Z"),
+    });
+
+    expect(events[0]).toBe("before");
+    expect(events[1]).toBe("list");
+  });
+
+  it("manual 模式会向 beforeFetchPosts 透传 categoryId", async () => {
+    const repo = createRepo();
+
+    const adapter: PlatformAdapter = {
+      platform: "tiktok",
+      async listPosts(accountId) {
+        return [
+          {
+            platform: "tiktok",
+            accountId,
+            postId: "v-1",
+            url: `https://www.tiktok.com/@${accountId}/video/1`,
+          },
+        ];
+      },
+      async fetchDetail(ref) {
+        return {
+          id: ref.postId,
+          webpage_url: ref.url,
+          timestamp: 1_720_000_001,
+        };
+      },
+      cleanse(detail, ref) {
+        const data = detail as { id: string; webpage_url: string; timestamp: number };
+        return {
+          platform: "tiktok",
+          accountId: ref.accountId,
+          postId: data.id,
+          sourceUrl: data.webpage_url,
+          publishedAt: new Date(data.timestamp * 1000).toISOString(),
+        };
+      },
+      async openMediaStream(): Promise<ProcessStream> {
+        throw new Error("not used in this test");
+      },
+    };
+
+    await runAccountIngest({
+      platform: "tiktok",
+      accountId: "@alice",
+      source: "manual",
+      manualCategoryId: 9,
+      repo,
+      adapter,
+      beforeFetchPosts: async (hookInput) => {
+        expect(hookInput.categoryId).toBe(9);
+      },
+      now: () => new Date("2026-07-03T10:00:00Z"),
+    });
+  });
+
+  it("beforeFetchPosts 抛错时应阻断抓取", async () => {
+    const repo = createRepo();
+    let listCalled = false;
+
+    const adapter: PlatformAdapter = {
+      platform: "tiktok",
+      async listPosts(accountId) {
+        listCalled = true;
+        return [
+          {
+            platform: "tiktok",
+            accountId,
+            postId: "v-1",
+            url: `https://www.tiktok.com/@${accountId}/video/1`,
+          },
+        ];
+      },
+      async fetchDetail(ref) {
+        return {
+          id: ref.postId,
+          webpage_url: ref.url,
+          timestamp: 1_720_000_001,
+        };
+      },
+      cleanse(detail, ref) {
+        const data = detail as { id: string; webpage_url: string; timestamp: number };
+        return {
+          platform: "tiktok",
+          accountId: ref.accountId,
+          postId: data.id,
+          sourceUrl: data.webpage_url,
+          publishedAt: new Date(data.timestamp * 1000).toISOString(),
+        };
+      },
+      async openMediaStream(): Promise<ProcessStream> {
+        throw new Error("not used in this test");
+      },
+    };
+
+    await expect(
+      runAccountIngest({
+        platform: "tiktok",
+        accountId: "@alice",
+        source: "due",
+        repo,
+        adapter,
+        beforeFetchPosts: async () => {
+          throw new Error("sync failed");
+        },
+        now: () => new Date("2026-07-03T10:00:00Z"),
+      }),
+    ).rejects.toThrow("sync failed");
+
+    expect(listCalled).toBeFalse();
+  });
 });
