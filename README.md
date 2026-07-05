@@ -58,15 +58,15 @@ bun run src/index.ts
 - 回传侧：`instar-server` 接口地址（至少 `APP_INSTAR_POST_WEBHOOK_URL` 必填）
 - 账号源（可选）：`APP_ACCOUNT_SOURCE_URL` 与其 Bearer
 
-如果你只想先验证“服务能跑 + 手动抓取 + 回传 instar”，建议先配置：
+如果你只想先验证“服务能跑 + 手动抓取 + 回传”，建议先配置：
 
 ```bash
-# 必填：帖子回传（instar-server）
-APP_INSTAR_POST_WEBHOOK_URL=http://<instar-host>:<instar-port>/post/api/sync
+# 必填：帖子回传（server）
+APP_INSTAR_POST_WEBHOOK_URL=http://<host>:<port>/post/api/sync
 
 # 建议补齐：明星资料同步 + 存在性查询（可显式给，也可走自动推导）
-APP_INSTAR_STAR_SYNC_URL=http://<instar-host>:<instar-port>/star/api/sync
-APP_INSTAR_STAR_EXISTS_URL=http://<instar-host>:<instar-port>/star/api/crawler/exists
+APP_INSTAR_STAR_SYNC_URL=http://<host>:<port>/star/api/sync
+APP_INSTAR_STAR_EXISTS_URL=http://<host>:<port>/star/api/crawler/exists
 
 # 必填：COS
 COS_BUCKET=...
@@ -195,7 +195,7 @@ Bearer 传参方式：
 - 明星资料同步 + 存在性查询 Bearer：`APP_INSTAR_STAR_SYNC_AUTH_BEARER`
 - 账号完成回调 Bearer：`APP_INSTAR_WEBHOOK_AUTH_BEARER`
 
-> 说明：当前 `instar-server` 的 `post/api/sync`、`star/api/sync`、`star/api/crawler/exists` 路由默认未强制 JWT 中间件，但 downloader 仍支持带 Bearer，便于网关层鉴权。
+> 说明：当前 `server` 的 `post/api/sync`、`star/api/sync`、`star/api/crawler/exists` 路由默认未强制 JWT 中间件，但 downloader 仍支持带 Bearer，便于网关层鉴权。
 
 ### 账号列表接口（tiktok 定时拉取）
 
@@ -231,19 +231,53 @@ Bearer 传参方式：
 
 ## Docker 部署（重要）
 
-**必须挂载 `APP_DATA_DIR` 对应目录**，否则容器重建会丢失 SQLite 状态，导致去重与调度游标失效。
+### 构建镜像
 
-示例（使用 `./data`）：
+```bash
+docker build -t tiktok-downloader:latest .
+```
+
+### 运行容器
+
+**必须挂载 `APP_DATA_DIR` 对应目录**，否则容器重建会丢失 SQLite 状态，导致去重与调度游标失效。
 
 ```bash
 docker run --rm -p 3000:3000 \
   -e PORT=3000 \
+  -e TZ=Asia/Shanghai \
   -e APP_DATA_DIR=/app/data \
+  -e APP_INSTAR_POST_WEBHOOK_URL=http://<host>:<port>/post/api/sync \
+  -e COS_BUCKET=... \
+  -e COS_REGION=... \
+  -e COS_SECRET_ID=... \
+  -e COS_SECRET_KEY=... \
   -v $(pwd)/data:/app/data \
   tiktok-downloader:latest
 ```
 
 如果你把 `APP_DATA_DIR` 改为其它路径，也要同步挂载那个路径。
+
+### 容器内 `yt-dlp` 自动更新（每天凌晨 3 点）
+
+镜像内置 cron，默认会：
+
+- 容器启动时先执行一次 `yt-dlp` 更新检查
+- 每天凌晨 `03:00` 再执行一次更新检查（按容器时区 `TZ`）
+
+可选控制项：
+
+- `TZ`：时区，默认 `Asia/Shanghai`
+- `DISABLE_YTDLP_BOOTSTRAP=1`：禁用“容器启动即检查一次”
+- `APP_PROXY_URL`：若配置，定时更新和启动时更新都会自动带 `--proxy`
+
+## GitHub Actions 构建镜像（GHCR）
+
+仓库已提供 `.github/workflows/docker-image.yml`：
+
+- `pull_request`：仅构建镜像，验证 Dockerfile 可用
+- `push main` / `tag v*`：构建并推送到 GHCR
+
+镜像地址规则：`ghcr.io/<owner>/<repo>`（例如 `ghcr.io/your-org/tiktok-downloader`）。
 
 ## 测试
 

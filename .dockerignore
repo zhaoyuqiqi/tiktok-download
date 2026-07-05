@@ -1,0 +1,25 @@
+# VCS
+.git
+.gitignore
+
+# Dependencies
+node_modules
+
+# Runtime / local data
+data
+output
+
+# Logs
+*.log
+
+# IDE
+.vscode
+.idea
+
+# Docs and specs not needed at runtime
+openspec
+docs
+.codebuddy
+
+# OS files
+.DS_Store
