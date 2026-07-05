@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   HttpInstarPostSyncClient,
   HttpInstarServerClient,
-  HttpInstarStarExistsClient,
   HttpInstarStarSyncClient,
   NoopInstarServerClient,
   toInstarAccountCompletedPayload,
@@ -268,24 +267,6 @@ describe("instarServer adapter layer", () => {
       followingCount: 73,
       isDel: 0,
     });
-  });
-
-  it("HttpInstarStarExistsClient: 能解析 exists 响应", async () => {
-    let gotUrl = "";
-
-    const client = new HttpInstarStarExistsClient({
-      url: "https://example.com/star-exists",
-      fetchImpl: async (url) => {
-        gotUrl = String(url);
-        return new Response(JSON.stringify({ code: 0, data: { exists: true } }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      },
-    });
-
-    await expect(client.isStarExists("yua_mikami")).resolves.toBeTrue();
-    expect(gotUrl).toBe("https://example.com/star-exists?starName=yua_mikami");
   });
 
   it("NoopInstarServerClient: 默认不抛错", async () => {

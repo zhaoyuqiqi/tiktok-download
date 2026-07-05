@@ -171,28 +171,25 @@ curl -X POST http://127.0.0.1:3000/fetch \
 
 ### 回传到 instar-server：地址怎么传、该传什么
 
-推荐显式配置这 3 个地址：
+推荐显式配置这 2 个地址：
 
 - `APP_INSTAR_POST_WEBHOOK_URL` → `POST /post/api/sync`（**必填**）
 - `APP_INSTAR_STAR_SYNC_URL` → `POST /star/api/sync`（可选，建议配置）
-- `APP_INSTAR_STAR_EXISTS_URL` → `GET /star/api/crawler/exists?starName=xxx`（可选，建议配置）
 
-如果你不想显式配置后两个地址，也可以只给 `APP_INSTAR_POST_WEBHOOK_URL`，程序会按如下规则自动推导：
+如果你不想显式配置 `APP_INSTAR_STAR_SYNC_URL`，也可以只给 `APP_INSTAR_POST_WEBHOOK_URL`，程序会自动推导：
 
 1. `APP_INSTAR_STAR_SYNC_URL` 为空时：取 `APP_INSTAR_POST_WEBHOOK_URL` 的同域地址并替换路径为 `/star/api/sync`
-2. `APP_INSTAR_STAR_EXISTS_URL` 为空且 `APP_INSTAR_STAR_SYNC_URL` 以 `/sync` 结尾时：将其改写为 `/crawler/exists`
 
 例如：
 
 - 已配置 `APP_INSTAR_POST_WEBHOOK_URL=http://127.0.0.1:3000/post/api/sync`
 - 则默认推导：
   - `APP_INSTAR_STAR_SYNC_URL=http://127.0.0.1:3000/star/api/sync`
-  - `APP_INSTAR_STAR_EXISTS_URL=http://127.0.0.1:3000/star/api/crawler/exists`
 
 Bearer 传参方式：
 
 - 帖子回传 Bearer：`APP_INSTAR_POST_WEBHOOK_AUTH_BEARER`
-- 明星资料同步 + 存在性查询 Bearer：`APP_INSTAR_STAR_SYNC_AUTH_BEARER`
+- 明星资料同步 Bearer：`APP_INSTAR_STAR_SYNC_AUTH_BEARER`
 - 账号完成回调 Bearer：`APP_INSTAR_WEBHOOK_AUTH_BEARER`
 
 > 说明：当前 `server` 的 `post/api/sync`、`star/api/sync`、`star/api/crawler/exists` 路由默认未强制 JWT 中间件，但 downloader 仍支持带 Bearer，便于网关层鉴权。

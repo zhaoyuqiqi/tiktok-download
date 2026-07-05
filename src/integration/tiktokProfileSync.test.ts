@@ -89,7 +89,7 @@ describe("fetchTikTokProfilePayload", () => {
 });
 
 describe("syncTikTokProfileBeforeFetch", () => {
-  it("已存在用户同步失败时不阻断", async () => {
+  it("用户资料同步失败时直接阻断", async () => {
     await expect(
       syncTikTokProfileBeforeFetch(
         {
@@ -97,11 +97,6 @@ describe("syncTikTokProfileBeforeFetch", () => {
           proxy: "http://127.0.0.1:2080",
         },
         {
-          existsClient: {
-            async isStarExists() {
-              return true;
-            },
-          },
           syncClient: {
             async syncStarProfile() {
               throw new Error("sync down");
@@ -132,49 +127,22 @@ describe("syncTikTokProfileBeforeFetch", () => {
             ),
         },
       ),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("抓取前用户信息同步失败");
   });
 
-  it("新用户同步失败时阻断", async () => {
+  it("用户页拉取失败时直接阻断", async () => {
     await expect(
       syncTikTokProfileBeforeFetch(
         {
           accountId: "@newbie",
         },
         {
-          existsClient: {
-            async isStarExists() {
-              return false;
-            },
-          },
           syncClient: {
             async syncStarProfile() {
-              throw new Error("sync failed");
+              // 不会执行到这里
             },
           },
-          fetchImpl: async () =>
-            new Response(
-              buildTikTokHtml({
-                __DEFAULT_SCOPE__: {
-                  "webapp.user-detail": {
-                    userInfo: {
-                      user: {
-                        id: "2",
-                        uniqueId: "newbie",
-                        nickname: "New User",
-                        avatarLarger: "https://img.example.com/b.jpg",
-                      },
-                      stats: {
-                        followerCount: 1,
-                        followingCount: 2,
-                        videoCount: 3,
-                      },
-                    },
-                  },
-                },
-              }),
-              { status: 200 },
-            ),
+          fetchImpl: async () => new Response("bad gateway", { status: 502, statusText: "Bad Gateway" }),
         },
       ),
     ).rejects.toThrow("抓取前用户信息同步失败");

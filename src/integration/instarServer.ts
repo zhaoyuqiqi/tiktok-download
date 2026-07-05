@@ -37,10 +37,6 @@ export interface InstarStarSyncClient {
   syncStarProfile(payload: InstarStarSyncPayload): Promise<void>;
 }
 
-export interface InstarStarExistsClient {
-  isStarExists(starName: string): Promise<boolean>;
-}
-
 export function toInstarAccountCompletedPayload(accountId: string, status: 0 | 1): AccountCompletedPayload {
   return {
     starId: accountId,
@@ -144,47 +140,6 @@ export class HttpInstarStarSyncClient implements InstarStarSyncClient {
       fetchImpl: this.fetchImpl,
       errorPrefix: "instar 明星资料同步失败",
     });
-  }
-}
-
-export class HttpInstarStarExistsClient implements InstarStarExistsClient {
-  private readonly url: string;
-  private readonly bearerToken?: string;
-  private readonly fetchImpl: FetchLike;
-
-  constructor(options: HttpInstarServerClientOptions) {
-    this.url = options.url;
-    this.bearerToken = options.bearerToken?.trim() || undefined;
-    this.fetchImpl = options.fetchImpl ?? fetch;
-  }
-
-  async isStarExists(starName: string): Promise<boolean> {
-    const queryUrl = `${this.url}?starName=${encodeURIComponent(starName)}`;
-    const response = await this.fetchImpl(queryUrl, {
-      method: "GET",
-      headers: {
-        ...(this.bearerToken ? { Authorization: `Bearer ${this.bearerToken}` } : {}),
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`instar 明星存在性查询失败: ${response.status} ${response.statusText}`);
-    }
-
-    const payload = (await response.json()) as {
-      code?: unknown;
-      data?: { exists?: unknown };
-    };
-
-    if (payload.code !== 0) {
-      throw new Error(`instar 明星存在性查询失败: code=${String(payload.code)}`);
-    }
-
-    if (typeof payload.data?.exists !== "boolean") {
-      throw new Error("instar 明星存在性查询返回格式无效");
-    }
-
-    return payload.data.exists;
   }
 }
 

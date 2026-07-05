@@ -5,7 +5,6 @@ import { AccountSourceClient } from "./integration/accountSourceClient.ts";
 import {
   HttpInstarPostSyncClient,
   HttpInstarServerClient,
-  HttpInstarStarExistsClient,
   HttpInstarStarSyncClient,
   NoopInstarServerClient,
   toInstarAccountCompletedPayload,
@@ -86,18 +85,6 @@ function resolveStarSyncUrl(explicitUrl: string, postWebhookUrl: string): string
   } catch {
     return "";
   }
-}
-
-function resolveStarExistsUrl(explicitUrl: string, syncUrl: string): string {
-  if (explicitUrl.length > 0) {
-    return explicitUrl;
-  }
-
-  if (syncUrl.endsWith("/sync")) {
-    return `${syncUrl.slice(0, -"/sync".length)}/crawler/exists`;
-  }
-
-  return "";
 }
 
 export async function main(): Promise<void> {
@@ -185,23 +172,11 @@ export async function main(): Promise<void> {
     instarPostWebhookUrl,
   );
   const instarStarSyncBearer = process.env.APP_INSTAR_STAR_SYNC_AUTH_BEARER?.trim() ?? "";
-  const instarStarExistsUrl = resolveStarExistsUrl(
-    process.env.APP_INSTAR_STAR_EXISTS_URL?.trim() ?? "",
-    instarStarSyncUrl,
-  );
 
   const instarStarSyncClient =
     instarStarSyncUrl.length > 0
       ? new HttpInstarStarSyncClient({
           url: instarStarSyncUrl,
-          bearerToken: instarStarSyncBearer,
-        })
-      : null;
-
-  const instarStarExistsClient =
-    instarStarExistsUrl.length > 0
-      ? new HttpInstarStarExistsClient({
-          url: instarStarExistsUrl,
           bearerToken: instarStarSyncBearer,
         })
       : null;
@@ -238,7 +213,7 @@ export async function main(): Promise<void> {
           manualCategoryId: source === "manual" ? options?.categoryId : undefined,
           traceId,
           beforeFetchPosts:
-            instarStarSyncClient !== null && instarStarExistsClient !== null
+            instarStarSyncClient !== null
               ? async (beforeFetchInput) => {
                   await syncTikTokProfileBeforeFetch(
                     {
@@ -248,7 +223,6 @@ export async function main(): Promise<void> {
                       categoryId: beforeFetchInput.categoryId,
                     },
                     {
-                      existsClient: instarStarExistsClient,
                       syncClient: instarStarSyncClient,
                     },
                   );
@@ -381,9 +355,8 @@ export async function main(): Promise<void> {
       credentialsConfigured: Boolean(config.cos.secretId && config.cos.secretKey),
     },
     instarStarSync: {
-      enabled: instarStarSyncClient !== null && instarStarExistsClient !== null,
+      enabled: instarStarSyncClient !== null,
       syncUrlConfigured: instarStarSyncUrl.length > 0,
-      existsUrlConfigured: instarStarExistsUrl.length > 0,
     },
   });
 }

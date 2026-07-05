@@ -1,9 +1,5 @@
 import { debugLog } from "../logging/debugLogger.ts";
-import type {
-  InstarStarExistsClient,
-  InstarStarSyncClient,
-  InstarStarSyncPayload,
-} from "./instarServer.ts";
+import type { InstarStarSyncClient, InstarStarSyncPayload } from "./instarServer.ts";
 
 type FetchWithProxy = (
   input: RequestInfo | URL,
@@ -48,7 +44,6 @@ export interface SyncTikTokProfileBeforeFetchInput {
 }
 
 export interface SyncTikTokProfileBeforeFetchDeps {
-  existsClient: InstarStarExistsClient;
   syncClient: InstarStarSyncClient;
   fetchImpl?: FetchWithProxy;
 }
@@ -171,19 +166,6 @@ export async function syncTikTokProfileBeforeFetch(
   deps: SyncTikTokProfileBeforeFetchDeps,
 ): Promise<void> {
   const starName = normalizeStarName(input.accountId);
-  let existed: boolean | undefined;
-
-  try {
-    existed = await deps.existsClient.isStarExists(starName);
-  } catch (error) {
-    existed = undefined;
-    debugLog("profile.sync.exists.failed", {
-      traceId: input.traceId,
-      accountId: input.accountId,
-      starName,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 
   try {
     const payload = await fetchTikTokProfilePayload({
@@ -199,24 +181,11 @@ export async function syncTikTokProfileBeforeFetch(
       traceId: input.traceId,
       accountId: input.accountId,
       starName,
-      existed: existed ?? null,
       insStarId: payload.insStarId,
     });
   } catch (error) {
-    if (existed === true) {
-      debugLog("profile.sync.failed.skip_existing", {
-        traceId: input.traceId,
-        accountId: input.accountId,
-        starName,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-
     throw new Error(
-      `抓取前用户信息同步失败（新用户或存在性未知）: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `抓取前用户信息同步失败: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
