@@ -230,7 +230,7 @@ Bearer 传参方式：
 
 ### 构建镜像
 
-镜像内置 `python3` + `ffmpeg`，可直接运行 `yt-dlp` 入口文件。
+镜像内置 `python3` + `ffmpeg`，并预装 `curl-cffi`（TikTok 抓取常用依赖），可直接运行 `yt-dlp` 入口文件。
 
 ```bash
 docker build -t tiktok-downloader:latest .

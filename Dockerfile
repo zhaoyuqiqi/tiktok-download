@@ -8,8 +8,12 @@ RUN apt-get update \
     cron \
     ffmpeg \
     python3 \
+    python3-pip \
     python-is-python3 \
     tzdata \
+  && python3 -m pip install --no-cache-dir --break-system-packages \
+    "curl-cffi>=0.15.0" \
+    certifi \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json bun.lock ./
