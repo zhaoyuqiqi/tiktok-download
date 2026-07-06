@@ -230,7 +230,7 @@ Bearer 传参方式：
 
 ### 构建镜像
 
-镜像内置 `ffmpeg`，并在 Linux 下自动使用 `yt-dlp_linux` 二进制（无需 Python 运行时）。
+镜像内置 `python3` + `ffmpeg`，可直接运行 `yt-dlp` 入口文件。
 
 ```bash
 docker build -t tiktok-downloader:latest .

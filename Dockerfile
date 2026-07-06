@@ -7,6 +7,8 @@ RUN apt-get update \
     ca-certificates \
     cron \
     ffmpeg \
+    python3 \
+    python-is-python3 \
     tzdata \
   && rm -rf /var/lib/apt/lists/*
 
