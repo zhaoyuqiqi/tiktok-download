@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { debugLog } from "../logging/debugLogger.ts";
 import type { InstarStarSyncClient, InstarStarSyncPayload } from "./instarServer.ts";
 
@@ -115,8 +116,9 @@ export async function fetchTikTokProfilePayload(input: {
     /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)<\/script>/s;
   const match = html.match(USER_DETAIL_SCRIPT_RE);
   if (!match?.[1]) {
+    await writeFile("data/tiktokProfileSync.html", html);
     throw new Error(
-      "TikTok 用户页未找到 __UNIVERSAL_DATA_FOR_REHYDRATION__ 数据",
+      `TikTok ${starName} 用户页未找到 __UNIVERSAL_DATA_FOR_REHYDRATION__ 数据`,
     );
   }
 
