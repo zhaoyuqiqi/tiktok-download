@@ -1,4 +1,4 @@
-FROM oven/bun:1
+FROM oven/bun:1-slim
 
 WORKDIR /app
 
@@ -6,7 +6,6 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     cron \
-    curl \
     ffmpeg \
     tzdata \
   && rm -rf /var/lib/apt/lists/*
@@ -30,6 +29,6 @@ ENV NODE_ENV=production \
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
+  CMD bun -e "const port=process.env.PORT||3000; const r=await fetch('http://127.0.0.1:'+port+'/health'); if(!r.ok) process.exit(1);" || exit 1
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]

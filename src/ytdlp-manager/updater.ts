@@ -1,4 +1,4 @@
-import { access, chmod, mkdir, readdir, readlink, symlink, unlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readdir, readFile, readlink, symlink, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { currentLinkPath, parseVersionFromTarget, resolveToolDir, versionBinName } from "./toolDir.ts";
 
@@ -33,6 +33,8 @@ function pickAssetName(platform: NodeJS.Platform): string {
       return "yt-dlp_macos";
     case "win32":
       return "yt-dlp.exe";
+    case "linux":
+      return "yt-dlp_linux";
     default:
       return "yt-dlp";
   }
@@ -53,6 +55,20 @@ async function readCurrentVersion(toolDir: string): Promise<string | undefined> 
     return parseVersionFromTarget(target);
   } catch {
     return undefined;
+  }
+}
+
+async function shouldRedownloadExistingBinary(path: string, platform: NodeJS.Platform): Promise<boolean> {
+  if (platform !== "linux") {
+    return false;
+  }
+
+  try {
+    const content = await readFile(path, "utf8");
+    const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
+    return firstLine.startsWith("#!") && /python(\d+(\.\d+)*)?/i.test(firstLine);
+  } catch {
+    return false;
   }
 }
 
@@ -150,10 +166,15 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
   const latestName = versionBinName(latestVersion);
   const latestPath = join(toolDir, latestName);
   if (await fileExists(latestPath)) {
-    if (localVersion !== latestVersion) {
-      await switchCurrentSymlink(toolDir, latestName);
+    const needRedownload = await shouldRedownloadExistingBinary(latestPath, platform);
+    if (!needRedownload) {
+      if (localVersion !== latestVersion) {
+        await switchCurrentSymlink(toolDir, latestName);
+      }
+      return { updated: false, latestVersion, localVersion };
     }
-    return { updated: false, latestVersion, localVersion };
+
+    await safeUnlink(latestPath);
   }
 
   const assetName = pickAssetName(platform);

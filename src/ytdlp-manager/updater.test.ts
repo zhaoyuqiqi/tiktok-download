@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { updateYtDlp } from "./updater.ts";
@@ -90,6 +90,7 @@ function releaseBody(tag: string): string {
     tag_name: tag,
     assets: [
       { name: "yt-dlp_macos", browser_download_url: "https://example.com/yt-dlp_macos" },
+      { name: "yt-dlp_linux", browser_download_url: "https://example.com/yt-dlp_linux" },
       { name: "SHA2-256SUMS", browser_download_url: "https://example.com/SHA2-256SUMS" },
     ],
   });
@@ -204,4 +205,61 @@ test("proxy 透传给所有 fetch 调用", async () => {
   for (const call of calls) {
     expect(call.proxy).toBe("http://127.0.0.1:7890");
   }
+});
+
+test("linux 平台应下载 yt-dlp_linux 而不是 yt-dlp", async () => {
+  const root = await tempToolDir();
+  const binary = new TextEncoder().encode("dummy-yt-dlp-linux-binary");
+  const hash = await sha256Hex(binary);
+  const calls: FetchCall[] = [];
+
+  const fetchMock = makeFetchMock(
+    {
+      [API]: { ok: true, bodyText: releaseBody("2026.06.28") },
+      "https://example.com/yt-dlp_linux": { ok: true, bodyBytes: binary },
+      "https://example.com/SHA2-256SUMS": { ok: true, bodyText: `${hash}  yt-dlp_linux\n` },
+    },
+    calls,
+  );
+
+  await updateYtDlp({
+    toolDir: root,
+    platform: "linux",
+    fetchImpl: fetchMock,
+  });
+
+  expect(calls.map((call) => call.url)).toContain("https://example.com/yt-dlp_linux");
+  expect(calls.map((call) => call.url)).not.toContain("https://example.com/yt-dlp");
+});
+
+test("linux 下若同版本缓存是 python 脚本，应强制重下载二进制", async () => {
+  const root = await tempToolDir();
+  const version = "2026.06.28";
+  const latestPath = join(root, `yt-dlp-${version}`);
+  await writeFile(latestPath, "#!/usr/bin/env python3\nprint('bad-cache')\n");
+  await symlink(`yt-dlp-${version}`, join(root, "current"));
+
+  const binary = new TextEncoder().encode("real-linux-binary");
+  const hash = await sha256Hex(binary);
+  const calls: FetchCall[] = [];
+
+  const fetchMock = makeFetchMock(
+    {
+      [API]: { ok: true, bodyText: releaseBody(version) },
+      "https://example.com/yt-dlp_linux": { ok: true, bodyBytes: binary },
+      "https://example.com/SHA2-256SUMS": { ok: true, bodyText: `${hash}  yt-dlp_linux\n` },
+    },
+    calls,
+  );
+
+  const result = await updateYtDlp({
+    toolDir: root,
+    platform: "linux",
+    fetchImpl: fetchMock,
+  });
+
+  expect(result.updated).toBe(true);
+  expect(calls.map((call) => call.url)).toContain("https://example.com/yt-dlp_linux");
+  const written = await readFile(latestPath);
+  expect(new TextDecoder().decode(written)).toBe("real-linux-binary");
 });
