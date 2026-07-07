@@ -1,10 +1,14 @@
 import { spawn } from "node:child_process";
 import type { ProcessResult, ProcessRunner, ProcessStream } from "../types.ts";
+import { toBool } from "../logging/debugLogger.ts";
 
 export class YtDlpRunner implements ProcessRunner {
   constructor(private readonly binPath: string) {}
 
   async run(args: string[]): Promise<ProcessResult> {
+    if(toBool(process.env.APP_DEBUG)) {
+      args.unshift('-v')
+    }
     const child = spawn(this.binPath, args, {
       stdio: ["ignore", "pipe", "pipe"],
     });

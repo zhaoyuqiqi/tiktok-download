@@ -22,6 +22,7 @@ import {
   versionBinName,
   versionSourceDirName,
 } from "./toolDir.ts";
+import { toBool } from "../logging/debugLogger.ts";
 
 const LATEST_RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
 const SOURCE_ARCHIVE_ASSET = "yt-dlp.tar.gz";
@@ -162,7 +163,7 @@ function withProxy(proxy: string | undefined, init: RequestInit = {}): RequestIn
   if (proxy === undefined || proxy === "") {
     return init as RequestInit & { proxy?: string };
   }
-  return { ...init, proxy, verbose: true } as RequestInit & { proxy?: string };
+  return { ...init, proxy, verbose: toBool(process.env.APP_DEBUG) } as RequestInit & { proxy?: string };
 }
 
 async function extractTarGzWithSystemTar(archivePath: string, targetDir: string): Promise<void> {

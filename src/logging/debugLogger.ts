@@ -10,7 +10,7 @@ const ANSI_RESET = "\u001b[0m";
  * @param raw 环境变量原始值
  * @returns 是否视为开启
  */
-function toBool(raw: string | undefined): boolean {
+export function toBool(raw: string | undefined): boolean {
   if (raw === undefined) {
     return false;
   }
