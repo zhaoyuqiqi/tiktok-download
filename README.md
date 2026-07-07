@@ -69,7 +69,7 @@ bun run src/index.ts
 最少需要准备这 4 类信息：
 
 - 抓取侧：是否需要代理（可选，`APP_PROXY_URL`）
-- 存储侧：COS 凭据（`COS_BUCKET/COS_REGION/COS_SECRET_ID/COS_SECRET_KEY`，必填）
+- 存储侧：COS 目标（`COS_BUCKET/COS_REGION`，必填；鉴权走动态 STS）
 - 回传侧：`instar-server` 接口地址（至少 `APP_INSTAR_POST_WEBHOOK_URL` 必填）
 - 账号源（可选）：`APP_ACCOUNT_SOURCE_URL` 与其 Bearer
 
@@ -86,8 +86,7 @@ APP_INSTAR_STAR_EXISTS_URL=http://<host>:<port>/star/api/crawler/exists
 # 必填：COS
 COS_BUCKET=...
 COS_REGION=...
-COS_SECRET_ID=...
-COS_SECRET_KEY=...
+# 鉴权走动态 STS（无需 COS_SECRET_ID/COS_SECRET_KEY）
 ```
 
 ## 核心环境变量
@@ -113,8 +112,6 @@ COS_SECRET_KEY=...
 | `APP_INSTAR_STAR_EXISTS_URL` | 空 | 明星存在性查询地址（可选）；为空时且 `APP_INSTAR_STAR_SYNC_URL` 以 `/sync` 结尾时，自动推导为同路径 `/crawler/exists` |
 | `COS_BUCKET` | 空 | COS bucket（必填；缺失会导致服务启动报错） |
 | `COS_REGION` | 空 | COS region（必填；缺失会导致服务启动报错） |
-| `COS_SECRET_ID` | 空 | COS secret id（必填；缺失会导致服务启动报错） |
-| `COS_SECRET_KEY` | 空 | COS secret key（必填；缺失会导致服务启动报错） |
 | `COS_KEY_PREFIX` | `tiktok-download` | COS key 前缀 |
 
 > 帖子级回调说明：同步 payload 严格遵循 `crawler-ins` 的 `Post` 契约（`insPostId/starName/fullName/title/isTop/insStarId/publishTime/resources`），且**不再传 `cosKey`**；上传到 COS 后，会将 COS 资源地址写入 `resources[].url`。
@@ -263,8 +260,6 @@ docker run --rm -p 3000:3000 \
   -e APP_INSTAR_POST_WEBHOOK_URL=http://<host>:<port>/post/api/sync \
   -e COS_BUCKET=... \
   -e COS_REGION=... \
-  -e COS_SECRET_ID=... \
-  -e COS_SECRET_KEY=... \
   -v $(pwd)/data:/app/data \
   tiktok-downloader:latest
 ```

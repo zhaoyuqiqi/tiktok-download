@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import { debugLog } from "../logging/debugLogger.ts";
 import type { PlatformAdapter, Post } from "../platforms/adapter.ts";
+import type { CosUploader } from "./uploader.ts";
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -11,14 +12,11 @@ export interface CosPutObjectInput {
   Body: NodeJS.ReadableStream;
 }
 
-export interface CosClientLike {
-  putObject(input: CosPutObjectInput): Promise<unknown> | unknown;
-}
 
 export interface UploadPostStreamToCosInput {
   adapter: PlatformAdapter;
   post: Post;
-  cosClient: CosClientLike;
+  cosClient: CosUploader;
   bucket: string;
   region: string;
   key: string;
@@ -28,7 +26,7 @@ export interface UploadPostStreamToCosInput {
 
 export interface UploadRemoteUrlToCosInput {
   sourceUrl: string;
-  cosClient: CosClientLike;
+  cosClient: CosUploader;
   bucket: string;
   region: string;
   key: string;

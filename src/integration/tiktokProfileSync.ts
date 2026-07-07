@@ -1,5 +1,7 @@
 import type { ProcessRunner } from "../types.ts";
 import { debugLog } from "../logging/debugLogger.ts";
+import { uploadRemoteUrlToCos } from "../upload/cosStreamUpload.ts";
+import type { CosUploader } from "../upload/uploader.ts";
 import type {
   InstarStarSyncClient,
   InstarStarSyncPayload,
@@ -38,9 +40,18 @@ export interface SyncTikTokProfileBeforeFetchInput {
   categoryId?: number;
 }
 
+interface ProfileAvatarUploadOptions {
+  cosClient: CosUploader;
+  bucket: string;
+  region: string;
+  keyPrefix?: string;
+  fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
 export interface SyncTikTokProfileBeforeFetchDeps {
   syncClient: InstarStarSyncClient;
   runner: ProcessRunner;
+  avatarUpload?: ProfileAvatarUploadOptions;
 }
 
 function normalizeStarName(accountId: string): string {
@@ -106,6 +117,35 @@ function buildProfileArgs(accountId: string, proxy?: string): string[] {
     buildProfileUrl(accountId),
   );
   return args;
+}
+
+function safeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function normalizeExtFromUrl(sourceUrl: string): string {
+  try {
+    const pathname = new URL(sourceUrl).pathname;
+    const matched = pathname.match(/\.([a-zA-Z0-9]{1,8})$/);
+    if (matched?.[1]) {
+      return matched[1].toLowerCase();
+    }
+  } catch {
+    // ignore
+  }
+  return "jpg";
+}
+
+function buildAvatarObjectKey(starName: string, avatarUrl: string, keyPrefix = "tiktok-download"): string {
+  const ext = normalizeExtFromUrl(avatarUrl);
+  const safeStarName = safeSegment(starName);
+  const safePrefix = safeSegment(keyPrefix).replace(/\/+$/g, "");
+  const timestamp = Date.now();
+  const keyBody = `profile-avatar/${safeStarName}_${timestamp}.${ext}`;
+  if (safePrefix.length === 0) {
+    return keyBody;
+  }
+  return `${safePrefix}/${keyBody}`;
 }
 
 function parseProfilePayload(
@@ -190,6 +230,27 @@ export async function syncTikTokProfileBeforeFetch(
       categoryId: input.categoryId,
       runner: deps.runner,
     });
+
+    if (payload.avatar.length > 0 && deps.avatarUpload !== undefined) {
+      const avatarObjectKey = buildAvatarObjectKey(
+        payload.starName,
+        payload.avatar,
+        deps.avatarUpload.keyPrefix,
+      );
+
+      await uploadRemoteUrlToCos({
+        sourceUrl: payload.avatar,
+        cosClient: deps.avatarUpload.cosClient,
+        bucket: deps.avatarUpload.bucket,
+        region: deps.avatarUpload.region,
+        key: avatarObjectKey,
+        proxy: input.proxy,
+        traceId: input.traceId,
+        fetchImpl: deps.avatarUpload.fetchImpl,
+      });
+
+      payload.avatar = avatarObjectKey;
+    }
 
     await deps.syncClient.syncStarProfile(payload);
 

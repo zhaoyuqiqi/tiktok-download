@@ -1,9 +1,9 @@
 import { debugLog } from "../logging/debugLogger.ts";
 import type { PlatformAdapter, Post } from "../platforms/adapter.ts";
 import type { StateRepository } from "../storage/repository.ts";
-import type { CosClientLike } from "../upload/cosStreamUpload.ts";
 import { uploadPostStreamToCos, uploadRemoteUrlToCos } from "../upload/cosStreamUpload.ts";
 import { buildCosObjectKey } from "../upload/objectKey.ts";
+import type { CosUploader } from "../upload/uploader.ts";
 import { collectNewPostsStream } from "./fetchPipeline.ts";
 
 export interface ComputeNextRunAtInput {
@@ -48,7 +48,7 @@ export function computeNextRunAt(input: ComputeNextRunAtInput): string {
 }
 
 export interface MediaPipelineOptions {
-  cosClient: CosClientLike;
+  cosClient: CosUploader;
   bucket: string;
   region: string;
   keyPrefix?: string;

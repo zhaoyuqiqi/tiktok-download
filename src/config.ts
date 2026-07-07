@@ -1,8 +1,6 @@
 export interface CosConfig {
   bucket: string;
   region: string;
-  secretId: string;
-  secretKey: string;
   keyPrefix: string;
 }
 
@@ -71,8 +69,6 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
     cos: {
       bucket: str("COS_BUCKET", env.COS_BUCKET),
       region: str("COS_REGION", env.COS_REGION),
-      secretId: str("COS_SECRET_ID", env.COS_SECRET_ID),
-      secretKey: str("COS_SECRET_KEY", env.COS_SECRET_KEY),
       keyPrefix: str("COS_KEY_PREFIX", env.COS_KEY_PREFIX, DEFAULTS.cosKeyPrefix),
     },
   };

@@ -21,8 +21,6 @@ describe("loadServiceConfig", () => {
       APP_DATA_DIR: "/var/lib/tiktok",
       COS_BUCKET: "demo-1250000000",
       COS_REGION: "ap-guangzhou",
-      COS_SECRET_ID: "id",
-      COS_SECRET_KEY: "key",
       COS_KEY_PREFIX: "video",
     });
 
@@ -32,8 +30,6 @@ describe("loadServiceConfig", () => {
     expect(cfg.dataDir).toBe("/var/lib/tiktok");
     expect(cfg.cos.bucket).toBe("demo-1250000000");
     expect(cfg.cos.region).toBe("ap-guangzhou");
-    expect(cfg.cos.secretId).toBe("id");
-    expect(cfg.cos.secretKey).toBe("key");
     expect(cfg.cos.keyPrefix).toBe("video");
   });
 

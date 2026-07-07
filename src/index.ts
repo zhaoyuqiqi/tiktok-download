@@ -1,5 +1,4 @@
 import { join } from "node:path";
-import COS from "cos-nodejs-sdk-v5";
 import { loadServiceConfig } from "./config.ts";
 import { AccountSourceClient } from "./integration/accountSourceClient.ts";
 import {
@@ -19,26 +18,9 @@ import { DueScheduler } from "./scheduling/dueScheduler.ts";
 import { createApp } from "./server.ts";
 import { initSchema, openDatabase } from "./storage/db.ts";
 import { StateRepository } from "./storage/repository.ts";
-import type { CosPutObjectInput } from "./upload/cosStreamUpload.ts";
+import { uploader } from "./upload/uploader.ts";
 import { YtDlpRunner } from "./ytdlp-manager/runner.ts";
 import { YtDlpService } from "./ytdlp-manager/ytDlpService.ts";
-
-interface RawCosClient {
-  putObject(
-    input: CosPutObjectInput,
-    callback: (error: unknown, data: unknown) => void,
-  ): void;
-}
-
-function createCosClient(config: {
-  secretId: string;
-  secretKey: string;
-}): RawCosClient {
-  return new COS({
-    SecretId: config.secretId,
-    SecretKey: config.secretKey,
-  }) as unknown as RawCosClient;
-}
 
 function createTraceId(accountId: string, source: "due" | "manual"): string {
   const rand = Math.random().toString(36).slice(2, 8);
@@ -125,33 +107,14 @@ export async function main(): Promise<void> {
 
   const cosConfigured =
     config.cos.bucket.length > 0 &&
-    config.cos.region.length > 0 &&
-    config.cos.secretId.length > 0 &&
-    config.cos.secretKey.length > 0;
+    config.cos.region.length > 0;
 
   if (!cosConfigured) {
-    throw new Error("COS 配置不完整：请至少配置 COS_BUCKET/COS_REGION/COS_SECRET_ID/COS_SECRET_KEY");
+    throw new Error("COS 配置不完整：请至少配置 COS_BUCKET/COS_REGION");
   }
 
-  const rawCosClient = createCosClient({
-    secretId: config.cos.secretId,
-    secretKey: config.cos.secretKey,
-  });
-
   const mediaPipeline: MediaPipelineOptions = {
-    cosClient: {
-      async putObject(input: CosPutObjectInput): Promise<unknown> {
-        return await new Promise((resolve, reject) => {
-          rawCosClient.putObject(input, (error, data) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-            resolve(data);
-          });
-        });
-      },
-    },
+    cosClient: uploader,
     bucket: config.cos.bucket,
     region: config.cos.region,
     keyPrefix: config.cos.keyPrefix,
@@ -235,6 +198,12 @@ export async function main(): Promise<void> {
                     {
                       syncClient: instarStarSyncClient,
                       runner: await getProfileRunner(),
+                      avatarUpload: {
+                        cosClient: uploader,
+                        bucket: config.cos.bucket,
+                        region: config.cos.region,
+                        keyPrefix: config.cos.keyPrefix,
+                      },
                     },
                   );
                 }
@@ -363,7 +332,7 @@ export async function main(): Promise<void> {
       bucket: config.cos.bucket || null,
       region: config.cos.region || null,
       keyPrefix: config.cos.keyPrefix,
-      credentialsConfigured: Boolean(config.cos.secretId && config.cos.secretKey),
+      authMode: "dynamic-sts",
     },
     instarStarSync: {
       enabled: instarStarSyncClient !== null,

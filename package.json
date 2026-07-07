@@ -7,7 +7,8 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/fake-useragent": "^1.0.0"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -15,6 +16,7 @@
   "dependencies": {
     "@fission-ai/openspec": "^1.4.1",
     "cos-nodejs-sdk-v5": "^2.15.4",
-    "elysia": "^1.4.29"
+    "elysia": "^1.4.29",
+    "fake-useragent": "^1.0.1"
   }
 }

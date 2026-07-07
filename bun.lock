@@ -7,9 +7,11 @@
         "@fission-ai/openspec": "^1.4.1",
         "cos-nodejs-sdk-v5": "^2.15.4",
         "elysia": "^1.4.29",
+        "fake-useragent": "^1.0.1",
       },
       "devDependencies": {
         "@types/bun": "latest",
+        "@types/fake-useragent": "^1.0.0",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -70,6 +72,8 @@
     "@tokenizer/token": ["@tokenizer/token@0.3.0", "https://registry.npmmirror.com/@tokenizer/token/-/token-0.3.0.tgz", {}, "sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A=="],
 
     "@types/bun": ["@types/bun@1.3.14", "https://registry.npmmirror.com/@types/bun/-/bun-1.3.14.tgz", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
+
+    "@types/fake-useragent": ["@types/fake-useragent@1.0.0", "https://registry.npmmirror.com/@types/fake-useragent/-/fake-useragent-1.0.0.tgz", {}, "sha512-T+GsW6umr2E27FwubiKrPsjIyqx526AQH1dc1Sky31EnVW5YJ4aNV/KCWeCr9LBioSMGHi7zjNxAteHPQtzeDw=="],
 
     "@types/node": ["@types/node@26.1.0", "https://registry.npmmirror.com/@types/node/-/node-26.1.0.tgz", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-O0A1G3xPGy4w7AgQdAQYUlQ+BKk2Oovw8eRpofyp5KdBZULnbe+WqaOVNrm705SHphCiG4XHsACrSmPu1f+Kgw=="],
 
@@ -152,6 +156,8 @@
     "extend": ["extend@3.0.2", "https://registry.npmmirror.com/extend/-/extend-3.0.2.tgz", {}, "sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g=="],
 
     "extsprintf": ["extsprintf@1.3.0", "https://registry.npmmirror.com/extsprintf/-/extsprintf-1.3.0.tgz", {}, "sha512-11Ndz7Nv+mvAC1j0ktTa7fAb0vLyGGX+rMHNBYQviQDGU0Hw7lhctJANqbPhu9nV9/izT/IntTgZ7Im/9LJs9g=="],
+
+    "fake-useragent": ["fake-useragent@1.0.1", "https://registry.npmmirror.com/fake-useragent/-/fake-useragent-1.0.1.tgz", {}, "sha512-BOQh1TM//DhrVaeZ+b3w3s4E40rfYcDTn5aoSM2w1xVsZVGglNOzPR5H8KDO8NmF8sT4ppxyb4/MHGIHfZsVDA=="],
 
     "fast-decode-uri-component": ["fast-decode-uri-component@1.0.1", "https://registry.npmmirror.com/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz", {}, "sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg=="],
 
