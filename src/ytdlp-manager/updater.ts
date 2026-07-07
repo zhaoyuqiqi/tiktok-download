@@ -158,11 +158,11 @@ function findSourceArchiveAsset(assets: ReleaseAsset[]): ReleaseAsset | undefine
   return assets.find((asset) => asset.name === SOURCE_ARCHIVE_ASSET);
 }
 
-function withProxy(proxy: string | undefined, init: RequestInit = {}): RequestInit & { proxy?: string } {
+function withProxy(proxy: string | undefined, init: RequestInit = {}): RequestInit & { proxy?: string; verbose?: boolean} {
   if (proxy === undefined || proxy === "") {
     return init as RequestInit & { proxy?: string };
   }
-  return { ...init, proxy } as RequestInit & { proxy?: string };
+  return { ...init, proxy, verbose: true } as RequestInit & { proxy?: string };
 }
 
 async function extractTarGzWithSystemTar(archivePath: string, targetDir: string): Promise<void> {
@@ -262,7 +262,7 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
     withProxy(opts.proxy, {
       headers: {
         Accept: "application/vnd.github+json",
-        "User-Agent": "tiktok-downloader",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
       },
     }),
   );
