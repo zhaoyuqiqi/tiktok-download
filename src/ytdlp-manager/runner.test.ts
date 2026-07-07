@@ -8,6 +8,9 @@ let root = "";
 let fakeBin = "";
 
 const FAKE_SCRIPT = `#!/usr/bin/env bash
+while [ "$1" = "-v" ]; do
+  shift
+done
 mode="$1"
 if [ "$mode" = "ok" ]; then
   printf 'hello-stdout'
