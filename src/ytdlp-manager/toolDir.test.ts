@@ -3,9 +3,11 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import {
   currentLinkPath,
+  currentSourceLinkPath,
   parseVersionFromTarget,
   resolveToolDir,
   versionBinName,
+  versionSourceDirName,
 } from "./toolDir.ts";
 
 const ENV_KEY = "YT_DLP_TOOL_DIR";
@@ -61,6 +63,10 @@ test("currentLinkPath 拼出 <toolDir>/current", () => {
   expect(currentLinkPath("/opt/yt-dlp")).toBe(join("/opt/yt-dlp", "current"));
 });
 
+test("currentSourceLinkPath 拼出 <toolDir>/current-src", () => {
+  expect(currentSourceLinkPath("/opt/yt-dlp")).toBe(join("/opt/yt-dlp", "current-src"));
+});
+
 test("parseVersionFromTarget 解析出版本", () => {
   expect(parseVersionFromTarget("yt-dlp-2026.06.28")).toBe("2026.06.28");
   expect(parseVersionFromTarget("/opt/yt-dlp/yt-dlp-2026.06.28")).toBe("2026.06.28");
@@ -73,4 +79,8 @@ test("parseVersionFromTarget 非法名返回 undefined", () => {
 
 test("versionBinName 生成二进制名", () => {
   expect(versionBinName("2026.06.28")).toBe("yt-dlp-2026.06.28");
+});
+
+test("versionSourceDirName 生成源码目录名", () => {
+  expect(versionSourceDirName("2026.06.28")).toBe("yt-dlp-src-2026.06.28");
 });

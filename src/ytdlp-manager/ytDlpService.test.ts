@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import { YtDlpService } from "./ytDlpService.ts";
@@ -57,4 +57,34 @@ test("current 存在但目标二进制不存在时抛错", async () => {
 
   const service = new YtDlpService({ toolDir: root });
   await expect(service.getBinaryPath()).rejects.toThrow(/更新任务/);
+});
+
+test("current-src 可用时返回 patch-yt-dlp.sh 绝对路径", async () => {
+  const root = await tempToolDir();
+  const srcDirName = "yt-dlp-src-2026.06.28";
+  const srcDir = join(root, srcDirName);
+  await mkdir(srcDir, { recursive: true });
+  await writeFile(join(srcDir, "patch-yt-dlp.sh"), "#!/usr/bin/env sh\necho ok\n");
+  await symlink(srcDirName, join(root, "current-src"));
+
+  const service = new YtDlpService({ toolDir: root });
+  const path = await service.getPatchedProfileRunnerPath();
+  expect(path).toBe(join(srcDir, "patch-yt-dlp.sh"));
+});
+
+test("current-src 缺失时抛明确错误", async () => {
+  const root = await tempToolDir();
+  const service = new YtDlpService({ toolDir: root });
+  await expect(service.getPatchedProfileRunnerPath()).rejects.toThrow(/current-src/);
+});
+
+test("current-src 指向目录存在但 patch 脚本缺失时抛错", async () => {
+  const root = await tempToolDir();
+  const srcDirName = "yt-dlp-src-2026.06.28";
+  const srcDir = join(root, srcDirName);
+  await mkdir(srcDir, { recursive: true });
+  await symlink(srcDirName, join(root, "current-src"));
+
+  const service = new YtDlpService({ toolDir: root });
+  await expect(service.getPatchedProfileRunnerPath()).rejects.toThrow(/patch 脚本/);
 });

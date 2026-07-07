@@ -18,9 +18,9 @@
 bun install
 ```
 
-## yt-dlp 二进制管理
+## yt-dlp 管理（含 patched profile runner）
 
-yt-dlp 二进制由独立工具目录托管（默认用户可写目录）：
+yt-dlp 工具目录由独立目录托管（默认用户可写目录）：
 - macOS: `~/Library/Application Support/tiktok-downloader/yt-dlp`
 - Linux: `~/.local/share/tiktok-downloader/yt-dlp`
 - Windows: `%LOCALAPPDATA%\tiktok-downloader\yt-dlp`
@@ -29,7 +29,7 @@ yt-dlp 二进制由独立工具目录托管（默认用户可写目录）：
 
 ### 初始化 / 更新
 
-首次运行前先下载并切换 `current`：
+首次运行前先执行更新：
 
 ```bash
 bun run src/ytdlp-manager/update.ts
@@ -39,6 +39,21 @@ bun run src/ytdlp-manager/update.ts
 
 ```bash
 bun run src/ytdlp-manager/update.ts --proxy http://127.0.0.1:7890
+```
+
+更新动作现在包含两部分：
+- 下载并切换平台二进制到 `current`
+- 额外下载 `yt-dlp.tar.gz` 并解压，随后自动：
+  - 用 `docker/tiktok.py` 覆盖解压目录中的 `yt_dlp/extractor/tiktok.py`
+  - 将 `docker/patch-yt-dlp.sh` 复制到解压目录根目录
+  - 将该解压目录切到 `current-src`
+
+因此后续抓取用户资料时将直接走 `current-src/patch-yt-dlp.sh`（不再走 fetch）。
+
+使用方式与 `yt-dlp` 一致，例如：
+
+```bash
+./patch-yt-dlp.sh --proxy http://127.0.0.1:2080 --flat-playlist --playlist-items 0 -J --no-warnings https://www.tiktok.com/@yua_mikami
 ```
 
 ## 启动服务

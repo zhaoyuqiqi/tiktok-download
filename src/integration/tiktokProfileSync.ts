@@ -1,40 +1,34 @@
-import { writeFile } from "node:fs/promises";
+import type { ProcessRunner } from "../types.ts";
 import { debugLog } from "../logging/debugLogger.ts";
-import type { InstarStarSyncClient, InstarStarSyncPayload } from "./instarServer.ts";
+import type {
+  InstarStarSyncClient,
+  InstarStarSyncPayload,
+} from "./instarServer.ts";
 
-type FetchWithProxy = (
-  input: RequestInfo | URL,
-  init?: RequestInit & {
-    proxy?: string;
-  },
-) => Promise<Response>;
-
-interface WebAppUserDetail {
-  userInfo?: {
-    user?: {
-      id?: string;
-      uniqueId?: string;
-      nickname?: string;
-      avatarLarger?: string;
-      avatarMedium?: string;
-      avatarThumb?: string;
-    };
-    stats?: {
-      followerCount?: number;
-      followingCount?: number;
-      videoCount?: number;
-    };
-    statsV2: {
-      followerCount?: number;
-      followingCount?: number;
-      videoCount?: number;
-    };
-  };
-}
-interface RawTikTokUserData {
-  __DEFAULT_SCOPE__?: {
-    "webapp.user-detail"?: WebAppUserDetail;
-  };
+interface RawTikTokProfileFromYtDlp {
+  /** MSID */
+  id?: string;
+  /** 用户名id 唯一 */
+  title?: string;
+  /** 上传者用户名 */
+  uploader?: string;
+  /** 上传者ID  6557999606692954114 */
+  uploader_id?: string;
+  /** 展示的用户名 */
+  channel?: string;
+  /** MSID */
+  channel_id?: string;
+  /** 头像（部分输出可能直接是 avatar） */
+  avatar?: string;
+  avatar_thumb?: string;
+  avatar_medium?: string;
+  avatar_larger?: string;
+  /** 粉丝数 */
+  channel_follower_count?: number;
+  /** 关注数 */
+  following_count?: number;
+  /** 视频数 */
+  aweme_count?: number;
 }
 
 export interface SyncTikTokProfileBeforeFetchInput {
@@ -46,7 +40,7 @@ export interface SyncTikTokProfileBeforeFetchInput {
 
 export interface SyncTikTokProfileBeforeFetchDeps {
   syncClient: InstarStarSyncClient;
-  fetchImpl?: FetchWithProxy;
+  runner: ProcessRunner;
 }
 
 function normalizeStarName(accountId: string): string {
@@ -60,18 +54,6 @@ function normalizeStarName(accountId: string): string {
   }
 
   return raw.startsWith("@") ? raw.slice(1) : raw;
-}
-
-function withProxy(
-  proxy: string | undefined,
-): RequestInit & { proxy?: string } {
-  if (!proxy) {
-    return {};
-  }
-
-  return {
-    proxy,
-  };
 }
 
 function toNumber(value: unknown): number {
@@ -89,78 +71,110 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
+function toStringSafe(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return "";
+}
+
+function buildProfileUrl(accountId: string): string {
+  const raw = accountId.trim();
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return raw;
+  }
+
+  const starName = normalizeStarName(raw);
+  return `https://www.tiktok.com/@${starName}`;
+}
+
+function buildProfileArgs(accountId: string, proxy?: string): string[] {
+  const args: string[] = [];
+  if (proxy && proxy.trim().length > 0) {
+    args.push("--proxy", proxy);
+  }
+
+  args.push(
+    "--flat-playlist",
+    "--playlist-items",
+    "0",
+    "-J",
+    "--no-warnings",
+    buildProfileUrl(accountId),
+  );
+  return args;
+}
+
+function parseProfilePayload(
+  raw: RawTikTokProfileFromYtDlp,
+  accountId: string,
+  categoryId?: number,
+): InstarStarSyncPayload {
+  const fallbackStarName = normalizeStarName(accountId);
+  const insStarId =
+    toStringSafe(raw.uploader_id) ||
+    toStringSafe(raw.channel_id) ||
+    toStringSafe(raw.id);
+  const starName =
+    toStringSafe(raw.uploader) || toStringSafe(raw.title) || fallbackStarName;
+  const fullName = toStringSafe(raw.channel) || starName;
+  const avatar = toStringSafe(
+    raw.avatar_larger ?? raw.avatar_medium ?? raw.avatar_thumb ?? raw.avatar,
+  );
+
+  if (insStarId.length === 0 || starName.length === 0) {
+    throw new Error("patch-yt-dlp 输出缺少 uploader_id/channel_id 与 starName");
+  }
+
+  return {
+    insStarId,
+    starName,
+    fullName,
+    zhName: fullName,
+    avatar,
+    postCount: toNumber(raw.aweme_count),
+    followerCount: toNumber(raw.channel_follower_count ?? 0),
+    followingCount: toNumber(raw.following_count ?? 0),
+    ...(categoryId === undefined ? {} : { categoryId }),
+    isDel: 0,
+  };
+}
+
 export async function fetchTikTokProfilePayload(input: {
   accountId: string;
   proxy?: string;
   categoryId?: number;
-  fetchImpl?: FetchWithProxy;
+  runner: ProcessRunner;
 }): Promise<InstarStarSyncPayload> {
   const starName = normalizeStarName(input.accountId);
   if (starName.length === 0) {
     throw new Error("账号标识不能为空");
   }
 
-  const fetchImpl = input.fetchImpl ?? (fetch as FetchWithProxy);
-  const response = await fetchImpl(
-    `https://www.tiktok.com/@${starName}`,
-    withProxy(input.proxy),
-  );
-  if (!response.ok) {
+  const args = buildProfileArgs(input.accountId, input.proxy);
+  const result = await input.runner.run(args);
+  if (result.code !== 0) {
     throw new Error(
-      `TikTok 用户页拉取失败: ${response.status} ${response.statusText}`,
+      `patch-yt-dlp 执行失败(exit=${result.code}): ${result.stderr || result.stdout}`,
     );
   }
 
-  const html = await response.text();
-  const USER_DETAIL_SCRIPT_RE =
-    /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)<\/script>/s;
-  const match = html.match(USER_DETAIL_SCRIPT_RE);
-  if (!match?.[1]) {
-    await writeFile("data/tiktokProfileSync.html", html);
-    throw new Error(
-      `TikTok ${starName} 用户页未找到 __UNIVERSAL_DATA_FOR_REHYDRATION__ 数据`,
-    );
+  const jsonRaw = result.stdout.trim();
+  if (jsonRaw.length === 0) {
+    throw new Error("patch-yt-dlp 输出为空");
   }
 
-  let data: RawTikTokUserData;
+  let data: RawTikTokProfileFromYtDlp;
   try {
-    data = JSON.parse(match[1]) as RawTikTokUserData;
+    data = JSON.parse(jsonRaw) as RawTikTokProfileFromYtDlp;
   } catch {
-    throw new Error("TikTok 用户页数据 JSON 解析失败");
+    throw new Error("patch-yt-dlp 输出 JSON 解析失败");
   }
 
-  const userDetail = data.__DEFAULT_SCOPE__?.["webapp.user-detail"] as
-    | WebAppUserDetail
-    | undefined;
-
-  const user = userDetail?.userInfo?.user;
-  const stats = userDetail?.userInfo?.stats;
-  const statsV2 = userDetail?.userInfo?.statsV2;
-
-  const insStarId = String(user?.id ?? "").trim();
-  const profileStarName = String(user?.uniqueId ?? "").trim();
-  if (insStarId.length === 0 || profileStarName.length === 0) {
-    throw new Error("TikTok 用户数据缺少 id/uniqueId");
-  }
-
-  const fullName = String(user?.nickname ?? "").trim() || profileStarName;
-  const avatar =
-    String(user?.avatarLarger ?? "").trim() ||
-    String(user?.avatarMedium ?? "").trim() ||
-    String(user?.avatarThumb ?? "").trim();
-
-  return {
-    insStarId,
-    starName: profileStarName,
-    fullName,
-    zhName: fullName,
-    avatar,
-    postCount: toNumber(stats?.videoCount ?? statsV2?.videoCount),
-    followerCount: toNumber(stats?.followerCount ?? statsV2?.followerCount),
-    followingCount: toNumber(stats?.followingCount ?? statsV2?.followingCount),
-    ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
-    isDel: 0,
-  };
+  return parseProfilePayload(data, input.accountId, input.categoryId);
 }
 
 export async function syncTikTokProfileBeforeFetch(
@@ -174,7 +188,7 @@ export async function syncTikTokProfileBeforeFetch(
       accountId: starName,
       proxy: input.proxy,
       categoryId: input.categoryId,
-      fetchImpl: deps.fetchImpl,
+      runner: deps.runner,
     });
 
     await deps.syncClient.syncStarProfile(payload);

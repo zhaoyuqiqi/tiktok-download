@@ -1,7 +1,19 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  mkdir,
+  readdir,
+  readFile,
+  readlink,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { chdir, cwd } from "node:process";
 import { updateYtDlp } from "./updater.ts";
 
 interface MockResponseInit {
@@ -91,116 +103,219 @@ function releaseBody(tag: string): string {
     assets: [
       { name: "yt-dlp_macos", browser_download_url: "https://example.com/yt-dlp_macos" },
       { name: "yt-dlp", browser_download_url: "https://example.com/yt-dlp" },
+      { name: "yt-dlp.tar.gz", browser_download_url: "https://example.com/yt-dlp.tar.gz" },
       { name: "SHA2-256SUMS", browser_download_url: "https://example.com/SHA2-256SUMS" },
     ],
   });
 }
 
-test("已是最新版本时不下载", async () => {
+async function createPatchAssets(root: string): Promise<{ patchTiktokPath: string; patchScriptPath: string }> {
+  const patchTiktokPath = join(root, "tiktok.py");
+  const patchScriptPath = join(root, "patch-yt-dlp.sh");
+  await writeFile(patchTiktokPath, "# patched tiktok extractor\n");
+  await writeFile(patchScriptPath, "#!/usr/bin/env sh\necho patched\n");
+  await chmod(patchScriptPath, 0o755);
+  return { patchTiktokPath, patchScriptPath };
+}
+
+function makeExtractMock(): (archivePath: string, targetDir: string) => Promise<void> {
+  return async (_archivePath: string, targetDir: string): Promise<void> => {
+    const extractedRoot = join(targetDir, "yt-dlp");
+    await mkdir(join(extractedRoot, "yt_dlp", "extractor"), { recursive: true });
+    await writeFile(join(extractedRoot, "yt_dlp", "extractor", "tiktok.py"), "# original\n");
+  };
+}
+
+function shaSumsText(entries: Array<{ name: string; hash: string }>): string {
+  return entries.map((entry) => `${entry.hash}  ${entry.name}`).join("\n") + "\n";
+}
+
+test("已是最新版本时不下载二进制，但仍准备 patched 源码并建立 current-src", async () => {
   const root = await tempToolDir();
   const version = "2026.06.28";
-  await writeFile(join(root, `yt-dlp-${version}`), "existing");
-  await symlink(`yt-dlp-${version}`, join(root, "current"));
+  const binaryName = `yt-dlp-${version}`;
+  await writeFile(join(root, binaryName), "existing");
+  await symlink(binaryName, join(root, "current"));
 
+  const sourceArchive = new TextEncoder().encode("fake-source-archive");
+  const sourceHash = await sha256Hex(sourceArchive);
   const calls: FetchCall[] = [];
-  const fetchMock = makeFetchMock({ [API]: { ok: true, bodyText: releaseBody(version) } }, calls);
+  const fetchMock = makeFetchMock(
+    {
+      [API]: { ok: true, bodyText: releaseBody(version) },
+      "https://example.com/SHA2-256SUMS": {
+        ok: true,
+        bodyText: shaSumsText([{ name: "yt-dlp.tar.gz", hash: sourceHash }]),
+      },
+      "https://example.com/yt-dlp.tar.gz": { ok: true, bodyBytes: sourceArchive },
+    },
+    calls,
+  );
 
-  const result = await updateYtDlp({ toolDir: root, platform: "darwin", fetchImpl: fetchMock });
-  expect(result.updated).toBe(false);
+  const patchAssets = await createPatchAssets(root);
+  const result = await updateYtDlp({
+    toolDir: root,
+    platform: "darwin",
+    fetchImpl: fetchMock,
+    extractTarGzImpl: makeExtractMock(),
+    patchTiktokSourcePath: patchAssets.patchTiktokPath,
+    patchScriptSourcePath: patchAssets.patchScriptPath,
+  });
+
+  expect(result.updated).toBe(true);
   expect(result.localVersion).toBe(version);
-  expect(calls.map((call) => call.url)).toEqual([API]);
+  expect(await readlink(join(root, "current-src"))).toBe(`yt-dlp-src-${version}`);
+  expect(calls.map((call) => call.url)).toEqual([
+    API,
+    "https://example.com/SHA2-256SUMS",
+    "https://example.com/yt-dlp.tar.gz",
+  ]);
 });
 
-test("已有最新版本文件但缺少 current 时重建软链接且不下载", async () => {
-  const root = await tempToolDir();
-  const version = "2026.06.28";
-  await writeFile(join(root, `yt-dlp-${version}`), "existing");
-
-  const calls: FetchCall[] = [];
-  const fetchMock = makeFetchMock({ [API]: { ok: true, bodyText: releaseBody(version) } }, calls);
-
-  const result = await updateYtDlp({ toolDir: root, platform: "darwin", fetchImpl: fetchMock });
-  expect(result.updated).toBe(false);
-  expect(result.localVersion).toBeUndefined();
-  expect(await readlink(join(root, "current"))).toBe(`yt-dlp-${version}`);
-  expect(calls.map((call) => call.url)).toEqual([API]);
-});
-
-test("有新版本时下载+SHA256+chmod 0755+切换 current+只留两版", async () => {
+test("有新版本时下载二进制+源码，校验 hash，注入 patch 并切换 current/current-src", async () => {
   const root = await tempToolDir();
   await writeFile(join(root, "yt-dlp-2026.06.10"), "old1");
   await writeFile(join(root, "yt-dlp-2026.06.20"), "old2");
+  await mkdir(join(root, "yt-dlp-src-2026.06.20"), { recursive: true });
   await symlink("yt-dlp-2026.06.20", join(root, "current"));
+  await symlink("yt-dlp-src-2026.06.20", join(root, "current-src"));
 
   const binary = new TextEncoder().encode("dummy-yt-dlp-binary");
-  const hash = await sha256Hex(binary);
+  const sourceArchive = new TextEncoder().encode("dummy-yt-dlp-source");
+  const binaryHash = await sha256Hex(binary);
+  const sourceHash = await sha256Hex(sourceArchive);
+
   const calls: FetchCall[] = [];
   const fetchMock = makeFetchMock(
     {
       [API]: { ok: true, bodyText: releaseBody("2026.06.28") },
       "https://example.com/yt-dlp_macos": { ok: true, bodyBytes: binary },
-      "https://example.com/SHA2-256SUMS": { ok: true, bodyText: `${hash}  yt-dlp_macos\n` },
+      "https://example.com/yt-dlp.tar.gz": { ok: true, bodyBytes: sourceArchive },
+      "https://example.com/SHA2-256SUMS": {
+        ok: true,
+        bodyText: shaSumsText([
+          { name: "yt-dlp_macos", hash: binaryHash },
+          { name: "yt-dlp.tar.gz", hash: sourceHash },
+        ]),
+      },
     },
     calls,
   );
 
-  const result = await updateYtDlp({ toolDir: root, platform: "darwin", fetchImpl: fetchMock });
+  const patchAssets = await createPatchAssets(root);
+
+  const result = await updateYtDlp({
+    toolDir: root,
+    platform: "darwin",
+    fetchImpl: fetchMock,
+    extractTarGzImpl: makeExtractMock(),
+    patchTiktokSourcePath: patchAssets.patchTiktokPath,
+    patchScriptSourcePath: patchAssets.patchScriptPath,
+  });
+
   expect(result.updated).toBe(true);
   expect(await readlink(join(root, "current"))).toBe("yt-dlp-2026.06.28");
+  expect(await readlink(join(root, "current-src"))).toBe("yt-dlp-src-2026.06.28");
 
   const names = (await readdir(root)).sort();
   expect(names).toContain("yt-dlp-2026.06.20");
   expect(names).toContain("yt-dlp-2026.06.28");
   expect(names).not.toContain("yt-dlp-2026.06.10");
+  expect(names).toContain("yt-dlp-src-2026.06.20");
+  expect(names).toContain("yt-dlp-src-2026.06.28");
 
-  const mode = (await stat(join(root, "yt-dlp-2026.06.28"))).mode & 0o777;
-  expect(mode).toBe(0o755);
+  const binMode = (await stat(join(root, "yt-dlp-2026.06.28"))).mode & 0o777;
+  const patchMode = (await stat(join(root, "yt-dlp-src-2026.06.28", "patch-yt-dlp.sh"))).mode & 0o777;
+  expect(binMode).toBe(0o755);
+  expect(patchMode).toBe(0o755);
+
+  const patchedTiktokPy = await readFile(join(root, "yt-dlp-src-2026.06.28", "yt_dlp", "extractor", "tiktok.py"), "utf8");
+  expect(patchedTiktokPy).toContain("patched tiktok extractor");
+
+  expect(calls.map((call) => call.url)).toEqual([
+    API,
+    "https://example.com/SHA2-256SUMS",
+    "https://example.com/yt-dlp_macos",
+    "https://example.com/yt-dlp.tar.gz",
+  ]);
 });
 
-test("SHA256 校验失败时报错且不切 current", async () => {
+test("二进制 SHA256 校验失败时报错且不切 current", async () => {
   const root = await tempToolDir();
   await writeFile(join(root, "yt-dlp-2026.06.20"), "old");
   await symlink("yt-dlp-2026.06.20", join(root, "current"));
 
   const binary = new TextEncoder().encode("dummy-yt-dlp-binary");
+  const sourceArchive = new TextEncoder().encode("dummy-yt-dlp-source");
+  const sourceHash = await sha256Hex(sourceArchive);
+
   const fetchMock = makeFetchMock(
     {
       [API]: { ok: true, bodyText: releaseBody("2026.06.28") },
       "https://example.com/yt-dlp_macos": { ok: true, bodyBytes: binary },
+      "https://example.com/yt-dlp.tar.gz": { ok: true, bodyBytes: sourceArchive },
       "https://example.com/SHA2-256SUMS": {
         ok: true,
-        bodyText: "0000000000000000000000000000000000000000000000000000000000000000  yt-dlp_macos\n",
+        bodyText: shaSumsText([
+          { name: "yt-dlp_macos", hash: "0000000000000000000000000000000000000000000000000000000000000000" },
+          { name: "yt-dlp.tar.gz", hash: sourceHash },
+        ]),
       },
     },
     [],
   );
 
-  await expect(updateYtDlp({ toolDir: root, platform: "darwin", fetchImpl: fetchMock })).rejects.toThrow(
-    "SHA256 校验失败",
-  );
+  const patchAssets = await createPatchAssets(root);
+
+  await expect(
+    updateYtDlp({
+      toolDir: root,
+      platform: "darwin",
+      fetchImpl: fetchMock,
+      extractTarGzImpl: makeExtractMock(),
+      patchTiktokSourcePath: patchAssets.patchTiktokPath,
+      patchScriptSourcePath: patchAssets.patchScriptPath,
+    }),
+  ).rejects.toThrow("SHA256 校验失败");
   expect(await readlink(join(root, "current"))).toBe("yt-dlp-2026.06.20");
 });
 
 test("proxy 透传给所有 fetch 调用", async () => {
   const root = await tempToolDir();
   const binary = new TextEncoder().encode("dummy-yt-dlp-binary");
-  const hash = await sha256Hex(binary);
+  const sourceArchive = new TextEncoder().encode("dummy-yt-dlp-source");
+  const binaryHash = await sha256Hex(binary);
+  const sourceHash = await sha256Hex(sourceArchive);
+
   const calls: FetchCall[] = [];
   const fetchMock = makeFetchMock(
     {
       [API]: { ok: true, bodyText: releaseBody("2026.06.28") },
       "https://example.com/yt-dlp_macos": { ok: true, bodyBytes: binary },
-      "https://example.com/SHA2-256SUMS": { ok: true, bodyText: `${hash}  yt-dlp_macos\n` },
+      "https://example.com/yt-dlp.tar.gz": { ok: true, bodyBytes: sourceArchive },
+      "https://example.com/SHA2-256SUMS": {
+        ok: true,
+        bodyText: shaSumsText([
+          { name: "yt-dlp_macos", hash: binaryHash },
+          { name: "yt-dlp.tar.gz", hash: sourceHash },
+        ]),
+      },
     },
     calls,
   );
+
+  const patchAssets = await createPatchAssets(root);
 
   await updateYtDlp({
     toolDir: root,
     platform: "darwin",
     proxy: "http://127.0.0.1:7890",
     fetchImpl: fetchMock,
+    extractTarGzImpl: makeExtractMock(),
+    patchTiktokSourcePath: patchAssets.patchTiktokPath,
+    patchScriptSourcePath: patchAssets.patchScriptPath,
   });
+
   expect(calls.length).toBeGreaterThan(0);
   for (const call of calls) {
     expect(call.proxy).toBe("http://127.0.0.1:7890");
@@ -210,23 +325,82 @@ test("proxy 透传给所有 fetch 调用", async () => {
 test("linux 平台应下载入口文件 yt-dlp", async () => {
   const root = await tempToolDir();
   const binary = new TextEncoder().encode("dummy-yt-dlp-entry");
-  const hash = await sha256Hex(binary);
+  const sourceArchive = new TextEncoder().encode("dummy-yt-dlp-source");
+  const binaryHash = await sha256Hex(binary);
+  const sourceHash = await sha256Hex(sourceArchive);
+
   const calls: FetchCall[] = [];
 
   const fetchMock = makeFetchMock(
     {
       [API]: { ok: true, bodyText: releaseBody("2026.06.28") },
       "https://example.com/yt-dlp": { ok: true, bodyBytes: binary },
-      "https://example.com/SHA2-256SUMS": { ok: true, bodyText: `${hash}  yt-dlp\n` },
+      "https://example.com/yt-dlp.tar.gz": { ok: true, bodyBytes: sourceArchive },
+      "https://example.com/SHA2-256SUMS": {
+        ok: true,
+        bodyText: shaSumsText([
+          { name: "yt-dlp", hash: binaryHash },
+          { name: "yt-dlp.tar.gz", hash: sourceHash },
+        ]),
+      },
     },
     calls,
   );
+
+  const patchAssets = await createPatchAssets(root);
 
   await updateYtDlp({
     toolDir: root,
     platform: "linux",
     fetchImpl: fetchMock,
+    extractTarGzImpl: makeExtractMock(),
+    patchTiktokSourcePath: patchAssets.patchTiktokPath,
+    patchScriptSourcePath: patchAssets.patchScriptPath,
   });
 
   expect(calls.map((call) => call.url)).toContain("https://example.com/yt-dlp");
+});
+
+test("默认 patch 资产路径与 cwd 无关", async () => {
+  const root = await tempToolDir();
+  const binary = new TextEncoder().encode("dummy-yt-dlp-entry");
+  const sourceArchive = new TextEncoder().encode("dummy-yt-dlp-source");
+  const binaryHash = await sha256Hex(binary);
+  const sourceHash = await sha256Hex(sourceArchive);
+
+  const fetchMock = makeFetchMock(
+    {
+      [API]: { ok: true, bodyText: releaseBody("2026.06.28") },
+      "https://example.com/yt-dlp_macos": { ok: true, bodyBytes: binary },
+      "https://example.com/yt-dlp.tar.gz": { ok: true, bodyBytes: sourceArchive },
+      "https://example.com/SHA2-256SUMS": {
+        ok: true,
+        bodyText: shaSumsText([
+          { name: "yt-dlp_macos", hash: binaryHash },
+          { name: "yt-dlp.tar.gz", hash: sourceHash },
+        ]),
+      },
+    },
+    [],
+  );
+
+  const originalCwd = cwd();
+  const unrelatedDir = await tempToolDir();
+  chdir(unrelatedDir);
+
+  try {
+    await updateYtDlp({
+      toolDir: root,
+      platform: "darwin",
+      fetchImpl: fetchMock,
+      extractTarGzImpl: makeExtractMock(),
+    });
+  } finally {
+    chdir(originalCwd);
+  }
+
+  const patchedTiktokPy = await readFile(join(root, "yt-dlp-src-2026.06.28", "yt_dlp", "extractor", "tiktok.py"), "utf8");
+  const patchedScript = await readFile(join(root, "yt-dlp-src-2026.06.28", "patch-yt-dlp.sh"), "utf8");
+  expect(patchedTiktokPy).toContain("class TikTokBaseIE");
+  expect(patchedScript).toContain("exec \"${PYTHON:-python3}\"");
 });

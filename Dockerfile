@@ -21,10 +21,11 @@ RUN bun install --frozen-lockfile
 
 COPY src ./src
 COPY tsconfig.json ./tsconfig.json
-COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-COPY docker/update-ytdlp.sh /app/scripts/update-ytdlp.sh
+COPY docker ./docker
 
-RUN chmod +x /app/docker/entrypoint.sh /app/scripts/update-ytdlp.sh
+RUN mkdir -p /app/scripts \
+  && cp /app/docker/update-ytdlp.sh /app/scripts/update-ytdlp.sh \
+  && chmod +x /app/docker/entrypoint.sh /app/scripts/update-ytdlp.sh
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \

@@ -1,45 +1,51 @@
 import { describe, expect, it } from "bun:test";
+import type { ProcessRunner } from "../types.ts";
 import { fetchTikTokProfilePayload, syncTikTokProfileBeforeFetch } from "./tiktokProfileSync.ts";
 
-function buildTikTokHtml(payload: unknown): string {
-  return `<html><head></head><body><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify(
-    payload,
-  )}</script></body></html>`;
+function makeRunner(result: { code: number; stdout: string; stderr: string }, onArgs?: (args: string[]) => void): ProcessRunner {
+  return {
+    async run(args: string[]) {
+      onArgs?.(args);
+      return result;
+    },
+    runStream() {
+      throw new Error("not implemented");
+    },
+  };
 }
 
 describe("fetchTikTokProfilePayload", () => {
-  it("可从用户页脚本提取资料并映射为 instar 同步结构", async () => {
+  it("通过 patch-yt-dlp JSON 输出提取资料并映射为 instar 同步结构", async () => {
     const result = await fetchTikTokProfilePayload({
       accountId: "@yua_mikami",
       proxy: "http://127.0.0.1:2080",
-      fetchImpl: async (_url, init) => {
-        expect(init?.proxy).toBe("http://127.0.0.1:2080");
-        return new Response(
-          buildTikTokHtml({
-            __DEFAULT_SCOPE__: {
-              "webapp.user-detail": {
-                userInfo: {
-                  user: {
-                    id: "6557999606692954114",
-                    uniqueId: "yua_mikami",
-                    nickname: "三上悠亜",
-                    avatarLarger: "https://img.example.com/a.jpg",
-                  },
-                  statsV2: {
-                    followerCount: "4850008",
-                    followingCount: "73",
-                    videoCount: "1509",
-                  },
-                },
-              },
-            },
+      runner: makeRunner(
+        {
+          code: 0,
+          stdout: JSON.stringify({
+            uploader_id: "6557999606692954114",
+            uploader: "yua_mikami",
+            channel: "三上悠亜",
+            avatar_larger: "https://img.example.com/a.jpg",
+            aweme_count: 1509,
+            channel_follower_count: 4850008,
+            following_count: 73,
           }),
-          {
-            status: 200,
-            headers: { "content-type": "text/html" },
-          },
-        );
-      },
+          stderr: "",
+        },
+        (args) => {
+          expect(args).toEqual([
+            "--proxy",
+            "http://127.0.0.1:2080",
+            "--flat-playlist",
+            "--playlist-items",
+            "0",
+            "-J",
+            "--no-warnings",
+            "https://www.tiktok.com/@yua_mikami",
+          ]);
+        },
+      ),
     });
 
     expect(result).toEqual({
@@ -53,38 +59,40 @@ describe("fetchTikTokProfilePayload", () => {
       followingCount: 73,
       isDel: 0,
     });
-    expect(result.categoryId).toBeUndefined();
   });
 
-  it("传入 categoryId 时优先使用该分类", async () => {
+  it("传入 categoryId 时透传到 payload", async () => {
     const result = await fetchTikTokProfilePayload({
       accountId: "@yua_mikami",
       categoryId: 6,
-      fetchImpl: async () =>
-        new Response(
-          buildTikTokHtml({
-            __DEFAULT_SCOPE__: {
-              "webapp.user-detail": {
-                userInfo: {
-                  user: {
-                    id: "6557999606692954114",
-                    uniqueId: "yua_mikami",
-                    nickname: "三上悠亜",
-                  },
-                  stats: {
-                    followerCount: 1,
-                    followingCount: 2,
-                    videoCount: 3,
-                  },
-                },
-              },
-            },
-          }),
-          { status: 200 },
-        ),
+      runner: makeRunner({
+        code: 0,
+        stdout: JSON.stringify({
+          channel_id: "sec-1",
+          title: "yua_mikami",
+          channel: "三上悠亜",
+          aweme_count: 3,
+          channel_follower_count: 1,
+          following_count: 2,
+        }),
+        stderr: "",
+      }),
     });
 
     expect(result.categoryId).toBe(6);
+  });
+
+  it("命令失败时抛错", async () => {
+    await expect(
+      fetchTikTokProfilePayload({
+        accountId: "@alice",
+        runner: makeRunner({
+          code: 2,
+          stdout: "",
+          stderr: "forbidden",
+        }),
+      }),
+    ).rejects.toThrow("patch-yt-dlp 执行失败");
   });
 });
 
@@ -102,35 +110,24 @@ describe("syncTikTokProfileBeforeFetch", () => {
               throw new Error("sync down");
             },
           },
-          fetchImpl: async () =>
-            new Response(
-              buildTikTokHtml({
-                __DEFAULT_SCOPE__: {
-                  "webapp.user-detail": {
-                    userInfo: {
-                      user: {
-                        id: "1",
-                        uniqueId: "alice",
-                        nickname: "Alice",
-                        avatarLarger: "https://img.example.com/a.jpg",
-                      },
-                      stats: {
-                        followerCount: 1,
-                        followingCount: 2,
-                        videoCount: 3,
-                      },
-                    },
-                  },
-                },
-              }),
-              { status: 200 },
-            ),
+          runner: makeRunner({
+            code: 0,
+            stdout: JSON.stringify({
+              uploader_id: "1",
+              uploader: "alice",
+              channel: "Alice",
+              aweme_count: 3,
+              channel_follower_count: 1,
+              following_count: 2,
+            }),
+            stderr: "",
+          }),
         },
       ),
     ).rejects.toThrow("抓取前用户信息同步失败");
   });
 
-  it("用户页拉取失败时直接阻断", async () => {
+  it("patch 输出缺少关键信息时阻断", async () => {
     await expect(
       syncTikTokProfileBeforeFetch(
         {
@@ -142,7 +139,13 @@ describe("syncTikTokProfileBeforeFetch", () => {
               // 不会执行到这里
             },
           },
-          fetchImpl: async () => new Response("bad gateway", { status: 502, statusText: "Bad Gateway" }),
+          runner: makeRunner({
+            code: 0,
+            stdout: JSON.stringify({
+              title: "newbie",
+            }),
+            stderr: "",
+          }),
         },
       ),
     ).rejects.toThrow("抓取前用户信息同步失败");

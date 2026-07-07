@@ -113,6 +113,16 @@ export async function main(): Promise<void> {
     return adapterPromise;
   };
 
+  let profileRunnerPromise: Promise<YtDlpRunner> | null = null;
+  const getProfileRunner = async (): Promise<YtDlpRunner> => {
+    if (profileRunnerPromise === null) {
+      profileRunnerPromise = ytDlpService
+        .getPatchedProfileRunnerPath()
+        .then((binPath) => new YtDlpRunner(binPath));
+    }
+    return profileRunnerPromise;
+  };
+
   const cosConfigured =
     config.cos.bucket.length > 0 &&
     config.cos.region.length > 0 &&
@@ -224,6 +234,7 @@ export async function main(): Promise<void> {
                     },
                     {
                       syncClient: instarStarSyncClient,
+                      runner: await getProfileRunner(),
                     },
                   );
                 }
