@@ -45,7 +45,10 @@ interface ProfileAvatarUploadOptions {
   bucket: string;
   region: string;
   keyPrefix?: string;
-  fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  fetchImpl?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>;
 }
 
 export interface SyncTikTokProfileBeforeFetchDeps {
@@ -136,7 +139,11 @@ function normalizeExtFromUrl(sourceUrl: string): string {
   return "jpg";
 }
 
-function buildAvatarObjectKey(starName: string, avatarUrl: string, keyPrefix = "tiktok-download"): string {
+function buildAvatarObjectKey(
+  starName: string,
+  avatarUrl: string,
+  keyPrefix = "tiktok-download",
+): string {
   const ext = normalizeExtFromUrl(avatarUrl);
   const safeStarName = safeSegment(starName);
   const safePrefix = safeSegment(keyPrefix).replace(/\/+$/g, "");
@@ -154,17 +161,23 @@ function parseProfilePayload(
   categoryId?: number,
 ): InstarStarSyncPayload {
   const fallbackStarName = normalizeStarName(accountId);
-  const insStarId =
-    toStringSafe(raw.uploader_id) ||
-    toStringSafe(raw.channel_id) ||
-    toStringSafe(raw.id);
+  const insStarId = toStringSafe(raw.uploader_id);
   const starName =
-    toStringSafe(raw.uploader) || toStringSafe(raw.title) || fallbackStarName;
+    toStringSafe(raw.uploader) || fallbackStarName || toStringSafe(raw.title);
   const fullName = toStringSafe(raw.channel) || starName;
   const avatar = toStringSafe(
     raw.avatar_larger ?? raw.avatar_medium ?? raw.avatar_thumb ?? raw.avatar,
   );
-
+  debugLog("fetch.profile.start", {
+    insStarId,
+    starName,
+    fullName,
+    zhName: fullName,
+    avatar,
+    postCount: toNumber(raw.aweme_count),
+    followerCount: toNumber(raw.channel_follower_count ?? 0),
+    followingCount: toNumber(raw.following_count ?? 0),
+  });
   if (insStarId.length === 0 || starName.length === 0) {
     throw new Error("patch-yt-dlp 输出缺少 uploader_id/channel_id 与 starName");
   }
