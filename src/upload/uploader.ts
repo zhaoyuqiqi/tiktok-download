@@ -20,7 +20,10 @@ interface StsCredentials {
 
 type RequestInitWithProxy = RequestInit & { proxy?: string };
 
-function withProxy(proxy: string | undefined, init: RequestInit = {}): RequestInitWithProxy {
+function withProxy(
+  proxy: string | undefined,
+  init: RequestInit = {},
+): RequestInitWithProxy {
   if (!proxy) {
     return init as RequestInitWithProxy;
   }
@@ -53,7 +56,10 @@ export class CosUploader {
     });
   }
 
-  private async requestSts(url: string, headers: Record<string, string>): Promise<StsCredentials> {
+  private async requestSts(
+    url: string,
+    headers: Record<string, string>,
+  ): Promise<StsCredentials> {
     const response = await fetch(
       url,
       withProxy(envConfig.proxy, {
@@ -65,8 +71,8 @@ export class CosUploader {
   }
 
   private async getAuthorization() {
-    const authUrl1 = "https://www.fengniaojianzhan.com/fengniao/common/getcossts";
-    const authUrl2 = "https://c3-sell.zuoyebang.com/fengniao/common/getcossts";
+    const authUrl1 =
+      "https://www.fengniaojianzhan.com/fengniao/common/getcossts";
 
     const actId = `7${String(Math.random() * 1000000000)
       .replace(".", "")
@@ -89,18 +95,10 @@ export class CosUploader {
       "Sec-Fetch-Site": "same-site",
     };
 
-    let res: StsCredentials;
-    try {
-      res = await this.requestSts(authUrl1, {
-        ...headers,
-        Origin: new URL(authUrl1).origin,
-      });
-    } catch {
-      res = await this.requestSts(authUrl2, {
-        ...headers,
-        Origin: new URL(authUrl2).origin,
-      });
-    }
+    const res = await this.requestSts(authUrl1, {
+      ...headers,
+      Origin: new URL(authUrl1).origin,
+    });
 
     if (res.errNo !== 0) {
       return undefined;

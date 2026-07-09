@@ -71,6 +71,7 @@ function resolveResources(input: PostFormatInput, raw: Record<string, unknown>):
       {
         type: "image",
         url: mediaUrl,
+        thumbnail_url: thumbnail,
         width,
         height,
       },
