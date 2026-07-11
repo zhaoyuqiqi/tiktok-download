@@ -24,7 +24,7 @@ import {
 } from "./toolDir.ts";
 import { toBool } from "../logging/debugLogger.ts";
 
-const LATEST_RELEASE_API = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
+const LATEST_RELEASE_API = "https://api.github.19981105.xyz/repos/yt-dlp/yt-dlp/releases/latest";
 const SOURCE_ARCHIVE_ASSET = "yt-dlp.tar.gz";
 
 interface ReleaseAsset {
@@ -260,12 +260,6 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
 
   const releaseResp = await fetchImpl(
     LATEST_RELEASE_API,
-    withProxy(opts.proxy, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-      },
-    }),
   );
   if (!releaseResp.ok) {
     throw new Error(`获取 yt-dlp 最新版本失败: HTTP ${releaseResp.status}`);
@@ -275,7 +269,6 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
   if (typeof data.tag_name !== "string" || !Array.isArray(data.assets)) {
     throw new Error("GitHub Release 响应缺少必要字段(tag_name/assets)");
   }
-
   const latestVersion = data.tag_name;
   const latestName = versionBinName(latestVersion);
   const latestPath = join(toolDir, latestName);
@@ -299,7 +292,8 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
 
   let checksumMap = new Map<string, string>();
   if (needBinaryDownload || needSourceDownload) {
-    const checksumResp = await fetchImpl(checksumAsset.browser_download_url, withProxy(opts.proxy));
+    const useProxy = checksumAsset.browser_download_url.includes('github.com')
+    const checksumResp = await fetchImpl(checksumAsset.browser_download_url,useProxy ? withProxy(opts.proxy): {});
     if (!checksumResp.ok) {
       throw new Error(`下载 SHA256 校验文件失败: HTTP ${checksumResp.status}`);
     }
@@ -323,8 +317,8 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
     if (binaryAsset === undefined) {
       throw new Error(`未在 release 资产中找到平台二进制: ${assetName}`);
     }
-
-    const binaryResp = await fetchImpl(binaryAsset.browser_download_url, withProxy(opts.proxy));
+    const useProxy = binaryAsset.browser_download_url.includes('github.com')
+    const binaryResp = await fetchImpl(binaryAsset.browser_download_url, useProxy ? withProxy(opts.proxy): {});
     if (!binaryResp.ok) {
       throw new Error(`下载 yt-dlp 二进制失败: HTTP ${binaryResp.status}`);
     }
@@ -346,8 +340,8 @@ export async function updateYtDlp(opts: UpdateOptions = {}): Promise<UpdateResul
     if (sourceAsset === undefined) {
       throw new Error(`未在 release 资产中找到源码归档: ${SOURCE_ARCHIVE_ASSET}`);
     }
-
-    const sourceResp = await fetchImpl(sourceAsset.browser_download_url, withProxy(opts.proxy));
+    const useProxy = sourceAsset.browser_download_url.includes('github.com')
+    const sourceResp = await fetchImpl(sourceAsset.browser_download_url, useProxy ? withProxy(opts.proxy) : {});
     if (!sourceResp.ok) {
       throw new Error(`下载 ${SOURCE_ARCHIVE_ASSET} 失败: HTTP ${sourceResp.status}`);
     }
