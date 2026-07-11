@@ -60,14 +60,41 @@ export class CosUploader {
     url: string,
     headers: Record<string, string>,
   ): Promise<StsCredentials> {
-    const response = await fetch(
-      url,
-      withProxy(envConfig.proxy, {
+    try {
+      const response = await fetch(
+        url,
+        withProxy(envConfig.proxy, {
+          headers,
+        }),
+      );
+      if (response.ok) {
+        return (await response.json()) as StsCredentials;
+      }
+      throw new Error("使用代理请求cossts失败");
+    } catch (error) {}
+    try {
+      const res2 = await fetch(url, {
         headers,
-      }),
-    );
-
-    return (await response.json()) as StsCredentials;
+      });
+      if (res2.ok) {
+        return (await res2.json()) as StsCredentials;
+      }
+      throw new Error("不使用代理请求cossts失败");
+    } catch (error) {}
+    return {
+      data: {
+        credentials: {
+          tmpSecretId: "",
+          tmpSecretKey: "",
+          sessionToken: "",
+        },
+        startTime: 0,
+        expiredTime: 0,
+        cdnhost: undefined,
+        bucket: undefined,
+      },
+      errNo: 0,
+    } satisfies StsCredentials;
   }
 
   private async getAuthorization() {
