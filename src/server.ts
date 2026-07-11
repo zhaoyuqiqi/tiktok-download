@@ -119,6 +119,7 @@ export function createApp(options: CreateAppOptions = {}) {
       const accountId = normalizeAccountIdentifier(body);
       const manualLimit = normalizeManualLimit(body);
       const categoryId = normalizeCategoryId(body);
+      const zhName = (body as Record<string, unknown>).zhName as string | undefined;
 
       if (accountId.length === 0) {
         set.status = 400;
@@ -158,6 +159,7 @@ export function createApp(options: CreateAppOptions = {}) {
         await options.scheduler.trigger(accountId, {
           limit: manualLimit,
           categoryId,
+          zhName
         });
       }
 
@@ -169,6 +171,7 @@ export function createApp(options: CreateAppOptions = {}) {
         source: "manual",
         limit: manualLimit ?? 100,
         categoryId,
+        zhName
       };
     })
     .get("/status", () => {

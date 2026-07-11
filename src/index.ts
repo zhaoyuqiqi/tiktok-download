@@ -184,6 +184,7 @@ export async function main(): Promise<void> {
           proxy: config.proxy,
           manualLimit: source === "manual" ? options?.limit : undefined,
           manualCategoryId: source === "manual" ? options?.categoryId : undefined,
+          manualZhName: source === "manual" ? options?.zhName : undefined,
           traceId,
           beforeFetchPosts:
             instarStarSyncClient !== null
@@ -194,6 +195,7 @@ export async function main(): Promise<void> {
                       proxy: beforeFetchInput.proxy,
                       traceId: beforeFetchInput.traceId,
                       categoryId: beforeFetchInput.categoryId,
+                      zhName: beforeFetchInput.zhName,
                     },
                     {
                       syncClient: instarStarSyncClient,

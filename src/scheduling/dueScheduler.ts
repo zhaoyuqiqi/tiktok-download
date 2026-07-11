@@ -8,6 +8,7 @@ export interface DueAccount {
 export interface ManualTriggerOptions {
   limit?: number;
   categoryId?: number;
+  zhName?: string;
 }
 
 export interface DueSchedulerDeps {
@@ -219,6 +220,7 @@ export class DueScheduler {
       source,
       limit: options?.limit ?? null,
       categoryId: options?.categoryId ?? null,
+      zhName: options?.zhName ?? null,
       runningCount: this.runningAccounts.size,
       concurrency: this.deps.concurrency,
     });

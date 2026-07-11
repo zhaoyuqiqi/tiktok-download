@@ -24,12 +24,12 @@ export interface InstarStarSyncPayload {
   insStarId: string;
   starName: string;
   fullName: string;
-  zhName: string;
   avatar: string;
   postCount: number;
   followerCount: number;
   followingCount: number;
   categoryId?: number;
+  zhName?: string;
   isDel: number;
 }
 

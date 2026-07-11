@@ -38,6 +38,7 @@ export interface SyncTikTokProfileBeforeFetchInput {
   proxy?: string;
   traceId?: string;
   categoryId?: number;
+  zhName?: string;
 }
 
 interface ProfileAvatarUploadOptions {
@@ -159,6 +160,7 @@ function parseProfilePayload(
   raw: RawTikTokProfileFromYtDlp,
   accountId: string,
   categoryId?: number,
+  zhName?: string,
 ): InstarStarSyncPayload {
   const fallbackStarName = normalizeStarName(accountId);
   const insStarId = toStringSafe(raw.uploader_id);
@@ -172,7 +174,7 @@ function parseProfilePayload(
     insStarId,
     starName,
     fullName,
-    zhName: fullName,
+    zhName,
     avatar,
     postCount: toNumber(raw.aweme_count),
     followerCount: toNumber(raw.channel_follower_count ?? 0),
@@ -186,7 +188,7 @@ function parseProfilePayload(
     insStarId,
     starName,
     fullName,
-    zhName: fullName,
+    ...(zhName === undefined ? {} : { zhName }),
     avatar,
     postCount: toNumber(raw.aweme_count),
     followerCount: toNumber(raw.channel_follower_count ?? 0),
@@ -200,6 +202,7 @@ export async function fetchTikTokProfilePayload(input: {
   accountId: string;
   proxy?: string;
   categoryId?: number;
+  zhName?: string
   runner: ProcessRunner;
 }): Promise<InstarStarSyncPayload> {
   const starName = normalizeStarName(input.accountId);
@@ -227,7 +230,7 @@ export async function fetchTikTokProfilePayload(input: {
     throw new Error("patch-yt-dlp 输出 JSON 解析失败");
   }
 
-  return parseProfilePayload(data, input.accountId, input.categoryId);
+  return parseProfilePayload(data, input.accountId, input.categoryId, input.zhName);
 }
 
 export async function syncTikTokProfileBeforeFetch(
@@ -241,6 +244,7 @@ export async function syncTikTokProfileBeforeFetch(
       accountId: starName,
       proxy: input.proxy,
       categoryId: input.categoryId,
+      zhName: input.zhName,
       runner: deps.runner,
     });
 

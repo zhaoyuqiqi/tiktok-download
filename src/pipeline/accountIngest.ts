@@ -81,6 +81,7 @@ export interface RunAccountIngestInput {
   proxy?: string;
   manualLimit?: number;
   manualCategoryId?: number;
+  manualZhName?: string;
   now?: () => Date;
   traceId?: string;
   beforeFetchPosts?: (input: {
@@ -90,6 +91,7 @@ export interface RunAccountIngestInput {
     proxy?: string;
     traceId?: string;
     categoryId?: number;
+    zhName?: string
   }) => Promise<void>;
   onPostSynced?: (event: PostSyncedEvent) => Promise<void>;
 }
@@ -335,6 +337,7 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
       proxy: input.proxy,
       traceId: input.traceId,
       categoryId: input.source === "manual" ? input.manualCategoryId : undefined,
+      zhName: input.source === "manual" ? input.manualZhName : undefined,
     });
   }
 
