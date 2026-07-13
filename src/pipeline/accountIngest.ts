@@ -263,6 +263,7 @@ async function uploadPostMedia(
 function markPostFetchedSuccess(input: RunAccountIngestInput, post: Post, now: () => Date): void {
   input.repo.markFetched({
     platform: input.platform,
+    accountId: input.accountId,
     postId: post.postId,
     publishedAt: post.publishedAt ?? null,
     status: "success",
@@ -347,33 +348,34 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
     limit: input.source === "manual" ? (input.manualLimit ?? 100) : undefined,
     proxy: input.proxy,
     traceId: input.traceId,
-  })) {
-    listedCount += 1;
-    if (latestListedPostId === undefined) {
-      latestListedPostId = post.postId;
-    }
-    latestPublishedAt = pickLatestPublishedAt(latestPublishedAt, post.publishedAt);
-
-    if (input.repo.isFetched(input.platform, post.postId)) {
+    isFetched: (platform, postId) => input.repo.isFetched(platform, postId),
+    onPendingRef: () => {
+      listedCount += 1;
+    },
+    onSkippedFetched: (ref) => {
       dedupSkippedCount += 1;
       debugLog("ingest.post.skip_dedup", {
         traceId: input.traceId,
         platform: input.platform,
         accountId: input.accountId,
-        postId: post.postId,
+        postId: ref.postId,
       });
-      continue;
+    },
+  })) {
+    if (latestListedPostId === undefined) {
+      latestListedPostId = post.postId;
     }
+    latestPublishedAt = pickLatestPublishedAt(latestPublishedAt, post.publishedAt);
 
     const rawDetail = post.rawDetail;
     const imageMode = post.mediaType === "image" || isImagePost(rawDetail);
 
     const mediaResult = await uploadPostMedia(input, post, rawDetail, imageMode);
 
+    await emitPostSynced(input, post, imageMode, mediaResult);
+
     markPostFetchedSuccess(input, post, now);
     newCount += 1;
-
-    await emitPostSynced(input, post, imageMode, mediaResult);
 
     debugLog("ingest.post.done", {
       traceId: input.traceId,

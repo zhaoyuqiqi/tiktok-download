@@ -25,7 +25,8 @@ export interface CreateAppOptions {
   repo?: Pick<
     StateRepository,
     "getAccount" | "upsertAccount" | "listAccounts" | "countAccounts" | "countDueAccounts" | "countFetchedPosts"
-  >;
+  > &
+    Partial<Pick<StateRepository, "clearFetchedPostsForAccount" | "resetAccountCursor">>;
   now?: () => Date;
 }
 
@@ -172,6 +173,24 @@ export function createApp(options: CreateAppOptions = {}) {
         limit: manualLimit ?? 100,
         categoryId,
         zhName
+      };
+    })
+    .post("/accounts/clear-fetched", ({ body, set }) => {
+      const accountId = normalizeAccountIdentifier(body);
+
+      if (accountId.length === 0) {
+        set.status = 400;
+        return { error: "accountId/starId 不能为空" };
+      }
+
+      const deletedCount = options.repo?.clearFetchedPostsForAccount?.(platform, accountId) ?? 0;
+      options.repo?.resetAccountCursor?.(platform, accountId);
+
+      return {
+        cleared: true,
+        accountId,
+        starId: accountId,
+        deletedCount,
       };
     })
     .get("/status", () => {

@@ -7,6 +7,9 @@ export interface FetchPipelineOptions {
   limit?: number;
   proxy?: string;
   traceId?: string;
+  isFetched?: (platform: string, postId: string) => boolean;
+  onPendingRef?: (ref: PlatformPostRef) => void;
+  onSkippedFetched?: (ref: PlatformPostRef) => void;
 }
 
 /**
@@ -92,6 +95,19 @@ export async function* collectNewPostsStream(
   const pendingRefs = await listPendingRefs(adapter, options);
 
   for (const ref of pendingRefs) {
+    options.onPendingRef?.(ref);
+
+    if (options.isFetched?.(adapter.platform, ref.postId) === true) {
+      options.onSkippedFetched?.(ref);
+      debugLog("fetch.detail.skip_fetched", {
+        traceId: options.traceId,
+        platform: adapter.platform,
+        accountId: options.accountId,
+        postId: ref.postId,
+      });
+      continue;
+    }
+
     debugLog("fetch.detail.start", {
       traceId: options.traceId,
       platform: adapter.platform,

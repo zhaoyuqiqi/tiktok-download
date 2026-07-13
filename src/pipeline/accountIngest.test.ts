@@ -7,6 +7,8 @@ import type { PlatformAdapter, PlatformPostRef } from "../platforms/adapter.ts";
 import type { ProcessStream } from "../types.ts";
 import { initSchema, openDatabase } from "../storage/db.ts";
 import { StateRepository } from "../storage/repository.ts";
+import type { CosPutObjectInput } from "../upload/cosStreamUpload.ts";
+import type { CosUploader } from "../upload/uploader.ts";
 import { computeNextRunAt, runAccountIngest } from "./accountIngest.ts";
 
 const tempDirs: string[] = [];
@@ -69,6 +71,16 @@ function createAdapter(listCalls: Array<{ limit?: number }>, total = 5): Platfor
   };
 }
 
+function fakePutObjectResult() {
+  return { ETag: "test-etag", Location: "bucket.cos.example/key" };
+}
+
+function createCosUploaderMock(
+  putObject: (input: CosPutObjectInput) => ReturnType<CosUploader["putObject"]>,
+): CosUploader {
+  return { putObject } as CosUploader;
+}
+
 describe("computeNextRunAt", () => {
   it("有新帖时使用最小间隔 30 分钟", () => {
     const next = computeNextRunAt({
@@ -94,6 +106,12 @@ describe("runAccountIngest", () => {
     const repo = createRepo();
     const listCalls: Array<{ limit?: number }> = [];
     const adapter = createAdapter(listCalls, 120);
+    const fetchedDetailIds: string[] = [];
+    const originalFetchDetail = adapter.fetchDetail.bind(adapter);
+    adapter.fetchDetail = async (ref, options) => {
+      fetchedDetailIds.push(ref.postId);
+      return originalFetchDetail(ref, options);
+    };
 
     repo.upsertAccount({
       platform: "tiktok",
@@ -121,6 +139,7 @@ describe("runAccountIngest", () => {
     });
 
     expect(listCalls).toEqual([{ limit: 100 }]);
+    expect(fetchedDetailIds).not.toContain("v-100");
     expect(result.listedCount).toBe(100);
     expect(result.dedupSkippedCount).toBe(1);
     expect(result.newCount).toBe(99);
@@ -293,11 +312,10 @@ describe("runAccountIngest", () => {
         bucket: "bucket-1",
         region: "ap-guangzhou",
         keyPrefix: "video",
-        cosClient: {
-          async putObject(input) {
-            cosKeys.push(input.Key);
-          },
-        },
+        cosClient: createCosUploaderMock(async (input) => {
+          cosKeys.push(input.Key);
+          return fakePutObjectResult();
+        }),
 
       },
       now: () => new Date("2026-07-03T10:00:00Z"),
@@ -374,11 +392,10 @@ describe("runAccountIngest", () => {
         bucket: "bucket-1",
         region: "ap-guangzhou",
         keyPrefix: "video",
-        cosClient: {
-          async putObject(input) {
-            events.push(`put:${input.Key}`);
-          },
-        },
+        cosClient: createCosUploaderMock(async (input) => {
+          events.push(`put:${input.Key}`);
+          return fakePutObjectResult();
+        }),
       },
       now: () => new Date("2026-07-03T10:00:00Z"),
     });
@@ -470,11 +487,7 @@ describe("runAccountIngest", () => {
         bucket: "bucket-1",
         region: "ap-beijing",
         keyPrefix: "video",
-        cosClient: {
-          async putObject() {
-            return;
-          },
-        },
+        cosClient: createCosUploaderMock(async () => fakePutObjectResult()),
       },
       now: () => new Date("2026-07-03T10:00:00Z"),
       onPostSynced: async (payload) => {
@@ -557,11 +570,10 @@ describe("runAccountIngest", () => {
         region: "ap-beijing",
         keyPrefix: "video",
         fetchImpl: async () => new Response("image-bytes", { status: 200 }),
-        cosClient: {
-          async putObject(input) {
-            cosKeys.push(input.Key);
-          },
-        },
+        cosClient: createCosUploaderMock(async (input) => {
+          cosKeys.push(input.Key);
+          return fakePutObjectResult();
+        }),
       },
       now: () => new Date("2026-07-03T10:00:00Z"),
       onPostSynced: async (payload) => {
@@ -628,11 +640,9 @@ describe("runAccountIngest", () => {
         bucket: "bucket-1",
         region: "ap-guangzhou",
         keyPrefix: "video",
-        cosClient: {
-          async putObject() {
-            throw new Error("upload failed");
-          },
-        },
+        cosClient: createCosUploaderMock(async () => {
+          throw new Error("upload failed");
+        }),
       },
       now: () => new Date("2026-07-03T10:00:00Z"),
     });
@@ -644,6 +654,35 @@ describe("runAccountIngest", () => {
       (error) => {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain("upload failed");
+      },
+    );
+
+    expect(repo.isFetched("tiktok", "v-1")).toBeFalse();
+  });
+
+  it("同步回调失败时不写入 fetched，错误向上抛出以触发调度退避", async () => {
+    const repo = createRepo();
+    const adapter = createAdapter([], 1);
+
+    const ingestPromise = runAccountIngest({
+      platform: "tiktok",
+      accountId: "@alice",
+      source: "due",
+      repo,
+      adapter,
+      now: () => new Date("2026-07-03T10:00:00Z"),
+      onPostSynced: async () => {
+        throw new Error("sync failed");
+      },
+    });
+
+    await ingestPromise.then(
+      () => {
+        throw new Error("预期同步失败，但得到成功结果");
+      },
+      (error) => {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain("sync failed");
       },
     );
 

@@ -18,6 +18,7 @@ interface ListDueAccountsInput {
 
 interface MarkFetchedPostInput {
   platform: string;
+  accountId?: string | null;
   postId: string;
   publishedAt?: string | null;
   status: string;
@@ -45,6 +46,7 @@ function toAccountRow(raw: {
 
 function toFetchedPostRow(raw: {
   platform: string;
+  account_id: string | null;
   post_id: string;
   published_at: string | null;
   status: string;
@@ -53,6 +55,7 @@ function toFetchedPostRow(raw: {
 }): FetchedPostRow {
   return {
     platform: raw.platform,
+    accountId: raw.account_id,
     postId: raw.post_id,
     publishedAt: raw.published_at,
     status: raw.status,
@@ -235,10 +238,11 @@ export class StateRepository {
   markFetched(input: MarkFetchedPostInput): FetchedPostRow {
     this.db
       .query(
-        `INSERT INTO fetched_posts(platform, post_id, published_at, status, attempts, fetched_at)
-         VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+        `INSERT INTO fetched_posts(platform, account_id, post_id, published_at, status, attempts, fetched_at)
+         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(platform, post_id)
          DO UPDATE SET
+           account_id = excluded.account_id,
            published_at = excluded.published_at,
            status = excluded.status,
            attempts = excluded.attempts,
@@ -246,6 +250,7 @@ export class StateRepository {
       )
       .run(
         input.platform,
+        input.accountId ?? null,
         input.postId,
         input.publishedAt ?? null,
         input.status,
@@ -255,13 +260,14 @@ export class StateRepository {
 
     const row = this.db
       .query(
-        `SELECT platform, post_id, published_at, status, attempts, fetched_at
+        `SELECT platform, account_id, post_id, published_at, status, attempts, fetched_at
          FROM fetched_posts
          WHERE platform = ?1 AND post_id = ?2`,
       )
       .get(input.platform, input.postId) as
       | {
           platform: string;
+          account_id: string | null;
           post_id: string;
           published_at: string | null;
           status: string;
@@ -275,5 +281,29 @@ export class StateRepository {
     }
 
     return toFetchedPostRow(row);
+  }
+
+  clearFetchedPostsForAccount(platform: string, accountId: string): number {
+    const result = this.db
+      .query(
+        `DELETE FROM fetched_posts
+         WHERE platform = ?1 AND account_id = ?2`,
+      )
+      .run(platform, accountId);
+
+    return result.changes;
+  }
+
+  resetAccountCursor(platform: string, accountId: string): AccountRow | null {
+    this.db
+      .query(
+        `UPDATE accounts
+         SET last_post_at = NULL,
+             last_video_id = NULL
+         WHERE platform = ?1 AND account_id = ?2`,
+      )
+      .run(platform, accountId);
+
+    return this.getAccount(platform, accountId);
   }
 }

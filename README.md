@@ -171,6 +171,37 @@ curl -X POST http://127.0.0.1:3000/fetch \
 
 > 自动 `tick` 的 due 抓取不会携带 `categoryId`；仅手动 `POST /fetch` 触发时会传该参数。
 
+### `POST /accounts/clear-fetched`
+
+清空指定账号的抓取记录，并重置该账号游标，便于下次重新抓取该账号内容。
+
+请求体（`accountId` 与 `starId` 二选一，若同时存在优先 `accountId`）：
+
+```json
+{
+  "starId": "@alice"
+}
+```
+
+响应（`200 OK`）：
+
+```json
+{
+  "cleared": true,
+  "accountId": "@alice",
+  "starId": "@alice",
+  "deletedCount": 12
+}
+```
+
+示例：
+
+```bash
+curl -X POST http://127.0.0.1:3000/accounts/clear-fetched \
+  -H 'content-type: application/json' \
+  -d '{"starId":"@alice"}'
+```
+
 ### `GET /status`
 
 返回调度与抓取状态摘要：

@@ -79,6 +79,62 @@ describe("StateRepository", () => {
     expect(second.fetchedAt).toBe("2026-07-03T18:01:01Z");
   });
 
+  it("可按账号清空抓取记录并重置账号游标", () => {
+    const { repo } = createRepo();
+
+    repo.upsertAccount({
+      platform: "tiktok",
+      accountId: "@alice",
+      nextRunAt: "2026-07-03T18:00:00Z",
+      lastPostAt: "2026-07-03T17:58:00Z",
+      lastVideoId: "v-2",
+      active: true,
+    });
+    repo.upsertAccount({
+      platform: "tiktok",
+      accountId: "@bob",
+      nextRunAt: "2026-07-03T18:00:00Z",
+      lastPostAt: "2026-07-03T17:57:00Z",
+      lastVideoId: "b-1",
+      active: true,
+    });
+
+    repo.markFetched({
+      platform: "tiktok",
+      accountId: "@alice",
+      postId: "v-1",
+      status: "success",
+      attempts: 1,
+      fetchedAt: "2026-07-03T18:00:01Z",
+    });
+    repo.markFetched({
+      platform: "tiktok",
+      accountId: "@alice",
+      postId: "v-2",
+      status: "success",
+      attempts: 1,
+      fetchedAt: "2026-07-03T18:00:02Z",
+    });
+    repo.markFetched({
+      platform: "tiktok",
+      accountId: "@bob",
+      postId: "b-1",
+      status: "success",
+      attempts: 1,
+      fetchedAt: "2026-07-03T18:00:03Z",
+    });
+
+    const deletedCount = repo.clearFetchedPostsForAccount("tiktok", "@alice");
+    const resetAccount = repo.resetAccountCursor("tiktok", "@alice");
+
+    expect(deletedCount).toBe(2);
+    expect(resetAccount?.lastPostAt).toBeNull();
+    expect(resetAccount?.lastVideoId).toBeNull();
+    expect(repo.isFetched("tiktok", "v-1")).toBeFalse();
+    expect(repo.isFetched("tiktok", "v-2")).toBeFalse();
+    expect(repo.isFetched("tiktok", "b-1")).toBeTrue();
+  });
+
   it("重启后仍可保留账号游标与去重状态", () => {
     const first = createRepo();
 

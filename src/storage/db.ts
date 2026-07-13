@@ -13,6 +13,7 @@ export interface AccountRow {
 
 export interface FetchedPostRow {
   platform: string;
+  accountId: string | null;
   postId: string;
   publishedAt: string | null;
   status: string;
@@ -42,6 +43,7 @@ export function initSchema(db: Database): void {
 
     CREATE TABLE IF NOT EXISTS fetched_posts (
       platform TEXT NOT NULL,
+      account_id TEXT,
       post_id TEXT NOT NULL,
       published_at TEXT,
       status TEXT NOT NULL,
@@ -56,5 +58,17 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_fetched_posts_fetched_at
       ON fetched_posts(fetched_at);
+  `);
+
+  const fetchedPostColumns = db
+    .query("PRAGMA table_info(fetched_posts)")
+    .all() as Array<{ name: string }>;
+  if (!fetchedPostColumns.some((column) => column.name === "account_id")) {
+    db.exec("ALTER TABLE fetched_posts ADD COLUMN account_id TEXT;");
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_fetched_posts_account
+      ON fetched_posts(platform, account_id);
   `);
 }

@@ -221,3 +221,98 @@ describe("server /fetch", () => {
     expect(gotCategoryId).toBe(-1);
   });
 });
+
+describe("server /accounts/clear-fetched", () => {
+  it("清空指定账号抓取记录并回显删除数量", async () => {
+    let clearedAccountId = "";
+    let resetAccountId = "";
+
+    const app = createApp({
+      repo: {
+        getAccount(platform, accountId) {
+          expect(platform).toBe("tiktok");
+          return {
+            platform,
+            accountId,
+            nextRunAt: "2026-07-03T10:00:00.000Z",
+            lastPostAt: "2026-07-03T09:00:00.000Z",
+            lastVideoId: "v-1",
+            active: true,
+          };
+        },
+        upsertAccount(input) {
+          resetAccountId = input.accountId;
+          expect(input.lastPostAt).toBeNull();
+          expect(input.lastVideoId).toBeNull();
+          return {
+            platform: input.platform,
+            accountId: input.accountId,
+            nextRunAt: input.nextRunAt,
+            lastPostAt: input.lastPostAt ?? null,
+            lastVideoId: input.lastVideoId ?? null,
+            active: input.active ?? true,
+          };
+        },
+        listAccounts() {
+          return [];
+        },
+        countAccounts() {
+          return 0;
+        },
+        countDueAccounts() {
+          return 0;
+        },
+        countFetchedPosts() {
+          return 0;
+        },
+        clearFetchedPostsForAccount(_platform, accountId) {
+          clearedAccountId = accountId;
+          return 2;
+        },
+        resetAccountCursor(_platform, accountId) {
+          resetAccountId = accountId;
+          return {
+            platform: "tiktok",
+            accountId,
+            nextRunAt: "2026-07-03T10:00:00.000Z",
+            lastPostAt: null,
+            lastVideoId: null,
+            active: true,
+          };
+        },
+      },
+    });
+
+    const res = await app.handle(
+      new Request("http://localhost/accounts/clear-fetched", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ starId: "@alice" }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cleared: boolean; accountId: string; starId: string; deletedCount: number };
+    expect(body.cleared).toBeTrue();
+    expect(body.accountId).toBe("@alice");
+    expect(body.starId).toBe("@alice");
+    expect(body.deletedCount).toBe(2);
+    expect(clearedAccountId).toBe("@alice");
+    expect(resetAccountId).toBe("@alice");
+  });
+
+  it("缺少账号标识时返回 400", async () => {
+    const app = createApp();
+    const res = await app.handle(
+      new Request("http://localhost/accounts/clear-fetched", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("accountId/starId");
+  });
+});
