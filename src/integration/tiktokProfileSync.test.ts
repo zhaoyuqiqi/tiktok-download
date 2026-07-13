@@ -10,6 +10,9 @@ function makeRunner(result: { code: number; stdout: string; stderr: string }, on
       onArgs?.(args);
       return result;
     },
+    async generateRun() {
+      throw new Error("not implemented");
+    },
     runStream() {
       throw new Error("not implemented");
     },
@@ -43,6 +46,8 @@ describe("fetchTikTokProfilePayload", () => {
             "--playlist-items",
             "0",
             "-J",
+            "--sleep-requests",
+            "1",
             "--no-warnings",
             "https://www.tiktok.com/@yua_mikami",
           ]);
@@ -54,7 +59,6 @@ describe("fetchTikTokProfilePayload", () => {
       insStarId: "6557999606692954114",
       starName: "yua_mikami",
       fullName: "三上悠亜",
-      zhName: "三上悠亜",
       avatar: "https://img.example.com/a.jpg",
       postCount: 1509,
       followerCount: 4850008,
@@ -70,7 +74,7 @@ describe("fetchTikTokProfilePayload", () => {
       runner: makeRunner({
         code: 0,
         stdout: JSON.stringify({
-          channel_id: "sec-1",
+          uploader_id: "sec-1",
           title: "yua_mikami",
           channel: "三上悠亜",
           aweme_count: 3,

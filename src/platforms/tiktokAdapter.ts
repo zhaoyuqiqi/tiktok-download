@@ -98,10 +98,20 @@ export class TikTokAdapter implements PlatformAdapter {
     }
   }
 
-  async listPosts(accountId: string, options?: ListPostsOptions): Promise<PlatformPostRef[]> {
-    const args = ["-J", "--flat-playlist"];
+  async listPosts(
+    accountId: string,
+    options?: ListPostsOptions,
+  ): Promise<PlatformPostRef[]> {
+    const args = [
+      "-J",
+      "--flat-playlist",
+      "--sleep-requests",
+      "2",
+      "--print-json",
+      "--lazy-playlist",
+    ];
     if (options?.limit !== undefined) {
-      args.push("-I", `:${options.limit}`);
+      args.push("--playlist-end", `${options.limit}`);
     }
     if (options?.proxy !== undefined) {
       args.push("--proxy", options.proxy);
@@ -109,13 +119,7 @@ export class TikTokAdapter implements PlatformAdapter {
     args.push(accountToProfileUrl(accountId));
 
     await this.waitBeforeRequest();
-    const result = await this.runner.run(args);
-    if (result.code !== 0) {
-      throw new Error(`yt-dlp 列表抓取失败: ${result.stderr || result.stdout}`);
-    }
-
-    const data = ensureJson<RawListJson>(result.stdout, result.stderr);
-    const entries = Array.isArray(data.entries) ? data.entries : [];
+    const entries = await this.runner.generateRun(args, (postId) => options?.isFetched?.(this.platform, postId) ?? false);
 
     const refs: PlatformPostRef[] = [];
     for (const entry of entries) {
@@ -124,7 +128,10 @@ export class TikTokAdapter implements PlatformAdapter {
         continue;
       }
 
-      const url = entry.webpage_url ?? entry.url ?? `https://www.tiktok.com/@${accountId}/video/${postId}`;
+      const url =
+        entry.webpage_url ??
+        entry.url ??
+        `https://www.tiktok.com/@${accountId}/video/${postId}`;
       const ref: PlatformPostRef = {
         platform: this.platform,
         accountId,
@@ -140,7 +147,10 @@ export class TikTokAdapter implements PlatformAdapter {
     return refs;
   }
 
-  async fetchDetail(ref: PlatformPostRef, options?: AdapterRequestOptions): Promise<unknown> {
+  async fetchDetail(
+    ref: PlatformPostRef,
+    options?: AdapterRequestOptions,
+  ): Promise<unknown> {
     const args = ["-J"];
     if (options?.proxy !== undefined) {
       args.push("--proxy", options.proxy);
@@ -161,10 +171,16 @@ export class TikTokAdapter implements PlatformAdapter {
     const postId = raw.id?.trim() || ref.postId;
     const sourceUrl = raw.webpage_url ?? ref.url;
     const rawDetail =
-      typeof detail === "object" && detail !== null ? ({ ...(detail as Record<string, unknown>) } as Record<string, unknown>) : undefined;
+      typeof detail === "object" && detail !== null
+        ? ({ ...(detail as Record<string, unknown>) } as Record<
+            string,
+            unknown
+          >)
+        : undefined;
 
     const mediaType = raw.video_ext === "none" ? "image" : "video";
-    const thumbnailUrl = raw.thumbnail ?? raw.cover ?? raw.cover_url ?? raw.thumbnail_url;
+    const thumbnailUrl =
+      raw.thumbnail ?? raw.cover ?? raw.cover_url ?? raw.thumbnail_url;
 
     return {
       platform: this.platform,
@@ -183,7 +199,15 @@ export class TikTokAdapter implements PlatformAdapter {
   }
 
   async openMediaStream(post: Post, options?: AdapterRequestOptions) {
-    const args = ["--no-playlist", "-o", "-"];
+    const args = [
+      "--no-playlist",
+      "-o",
+      "-",
+      "--sleep-interval",
+      "5",
+      "--max-sleep-interval",
+      "15",
+    ];
     if (options?.proxy !== undefined) {
       args.push("--proxy", options.proxy);
     }

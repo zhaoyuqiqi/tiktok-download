@@ -18,8 +18,18 @@ export interface ProcessStream {
   exited: Promise<number>;
 }
 
+export interface PostListItem {
+  id: string;
+  title?: string;
+  webpage_url?: string;
+  url?: string;
+}
 export interface ProcessRunner {
   run(args: string[]): Promise<ProcessResult>;
+  generateRun(
+    args: string[],
+    isExists: (postId: string) => boolean | PromiseLike<boolean>,
+  ): Promise<PostListItem[]>;
   runStream(args: string[]): ProcessStream;
 }
 
@@ -31,4 +41,3 @@ export interface Config {
   outputDir: string; // 默认 ./output
   proxy?: string; // 透传给 yt-dlp --proxy,未指定则不传
 }
-

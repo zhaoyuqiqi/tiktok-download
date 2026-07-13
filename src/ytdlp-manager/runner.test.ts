@@ -23,6 +23,15 @@ elif [ "$mode" = "echoargs" ]; then
   shift
   for a in "$@"; do printf '%s\n' "$a"; done
   exit 0
+elif [ "$mode" = "generateok" ]; then
+  printf '{"id":"v3","url":"https://example.com/v3"}\n'
+  printf '{"title":"missing id"}\n'
+  printf '{"id":"v2","url":"https://example.com/v2"}\n'
+  exit 0
+elif [ "$mode" = "generatefail" ]; then
+  printf '{"id":"v1"}\n'
+  printf 'list failed' 1>&2
+  exit 5
 fi
 exit 42
 `;
@@ -106,4 +115,22 @@ test("runStream 原样透传参数(含 --proxy)", async () => {
     "--proxy",
     "http://127.0.0.1:7890",
   ]);
+});
+
+test("generateRun 逐行解析列表并跳过缺少 id 的条目", async () => {
+  const runner = new YtDlpRunner(fakeBin);
+  const checkedIds: string[] = [];
+  const entries = await runner.generateRun(["generateok"], (postId) => {
+    checkedIds.push(postId);
+    return false;
+  });
+
+  expect(checkedIds).toEqual(["v3", "v2"]);
+  expect(entries.map((entry) => entry.id)).toEqual(["v3", "v2"]);
+});
+
+test("generateRun 非 0 退出码会抛出 stderr", async () => {
+  const runner = new YtDlpRunner(fakeBin);
+
+  await expect(runner.generateRun(["generatefail"], () => false)).rejects.toThrow("list failed");
 });

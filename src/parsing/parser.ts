@@ -18,9 +18,9 @@ export async function parse(
   limit?: number,
   proxy?: string,
 ): Promise<VideoInfo[]> {
-  const args = ["-J", "--flat-playlist"];
+  const args = ["-J", "--flat-playlist", "--sleep-requests", "1"];
   if (limit !== undefined) {
-    args.push("-I", `:${limit}`);
+    args.push("--playlist-end", `${limit}`);
   }
   if (proxy !== undefined) {
     args.push("--proxy", proxy);

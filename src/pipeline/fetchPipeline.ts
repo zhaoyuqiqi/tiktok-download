@@ -46,6 +46,7 @@ async function listPendingRefs(adapter: PlatformAdapter, options: FetchPipelineO
   const refs = await adapter.listPosts(options.accountId, {
     limit: options.limit,
     proxy: options.proxy,
+    isFetched: options.isFetched,
   });
 
   debugLog("fetch.list.done", {

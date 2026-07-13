@@ -6,6 +6,7 @@ export interface AdapterRequestOptions {
 
 export interface ListPostsOptions extends AdapterRequestOptions {
   limit?: number;
+  isFetched?: (platform: string, postId: string) => boolean | PromiseLike<boolean>;
 }
 
 export interface PlatformPostRef {

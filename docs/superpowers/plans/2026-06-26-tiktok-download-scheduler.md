@@ -277,15 +277,15 @@ test("limit 透传 -I :N 且不影响单视频", async () => {
   const calls: string[][] = [];
   const json = JSON.stringify({ id: "v1", title: "x" });
   await parse(fakeRunner(json, calls), "https://tiktok.com/@u", 5);
-  expect(calls[0]).toContain("-I");
-  expect(calls[0]).toContain(":5");
+  expect(calls[0]).toContain("--playlist-end");
+  expect(calls[0]).toContain("5");
 });
 
-test("无 limit 时不传 -I", async () => {
+test("无 limit 时不传 --playlist-end", async () => {
   const calls: string[][] = [];
   const json = JSON.stringify({ id: "v1", title: "x" });
   await parse(fakeRunner(json, calls), "https://tiktok.com/@u");
-  expect(calls[0]).not.toContain("-I");
+  expect(calls[0]).not.toContain("--playlist-end");
 });
 
 test("非法 JSON 抛错", async () => {
@@ -327,7 +327,7 @@ export async function parse(
 ): Promise<VideoInfo[]> {
   const args = ["-J", "--flat-playlist"];
   if (limit !== undefined) {
-    args.push("-I", `:${limit}`);
+    args.push("--playlist-end", `${limit}`);
   }
   args.push(url);
 

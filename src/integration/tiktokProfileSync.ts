@@ -117,6 +117,8 @@ function buildProfileArgs(accountId: string, proxy?: string): string[] {
     "--playlist-items",
     "0",
     "-J",
+    '--sleep-requests',
+    '1',
     "--no-warnings",
     buildProfileUrl(accountId),
   );
