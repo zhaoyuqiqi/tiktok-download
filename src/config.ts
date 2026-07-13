@@ -11,6 +11,7 @@ export interface ServiceConfig {
   proxy?: string;
   dataDir: string;
   cos: CosConfig;
+  cookiePath?: string
 }
 
 const DEFAULTS = {
@@ -71,5 +72,6 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
       region: str("COS_REGION", env.COS_REGION),
       keyPrefix: str("COS_KEY_PREFIX", env.COS_KEY_PREFIX, DEFAULTS.cosKeyPrefix),
     },
+    cookiePath: str("COOKIE_PATH", env.COOKIE_PATH) || undefined,
   };
 }

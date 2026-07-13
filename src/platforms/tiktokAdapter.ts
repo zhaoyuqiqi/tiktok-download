@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { loadServiceConfig } from "../config.ts";
 import type { ProcessRunner } from "../types.ts";
 import type {
   AdapterRequestOptions,
@@ -33,6 +35,8 @@ interface RawDetailJson {
   thumbnail_url?: string;
   [key: string]: unknown;
 }
+
+const config = loadServiceConfig();
 
 export interface TikTokAdapterOptions {
   requestDelayRangeMs?: [number, number];
@@ -116,10 +120,16 @@ export class TikTokAdapter implements PlatformAdapter {
     if (options?.proxy !== undefined) {
       args.push("--proxy", options.proxy);
     }
+    if (config.cookiePath) {
+      args.push("--cookies", join(config.dataDir, config.cookiePath));
+    }
     args.push(accountToProfileUrl(accountId));
 
     await this.waitBeforeRequest();
-    const entries = await this.runner.generateRun(args, (postId) => options?.isFetched?.(this.platform, postId) ?? false);
+    const entries = await this.runner.generateRun(
+      args,
+      (postId) => options?.isFetched?.(this.platform, postId) ?? false,
+    );
 
     const refs: PlatformPostRef[] = [];
     for (const entry of entries) {
@@ -154,6 +164,9 @@ export class TikTokAdapter implements PlatformAdapter {
     const args = ["-J"];
     if (options?.proxy !== undefined) {
       args.push("--proxy", options.proxy);
+    }
+    if (config.cookiePath) {
+      args.push("--cookies", join(config.dataDir, config.cookiePath));
     }
     args.push(ref.url);
 
@@ -210,6 +223,9 @@ export class TikTokAdapter implements PlatformAdapter {
     ];
     if (options?.proxy !== undefined) {
       args.push("--proxy", options.proxy);
+    }
+    if (config.cookiePath) {
+      args.push("--cookies", join(config.dataDir, config.cookiePath));
     }
     args.push(post.sourceUrl);
 

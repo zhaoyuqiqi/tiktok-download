@@ -6,6 +6,8 @@ import type {
   InstarStarSyncClient,
   InstarStarSyncPayload,
 } from "./instarServer.ts";
+import { join } from "node:path";
+import { loadServiceConfig } from "../config.ts";
 
 interface RawTikTokProfileFromYtDlp {
   /** MSID */
@@ -111,14 +113,18 @@ function buildProfileArgs(accountId: string, proxy?: string): string[] {
   if (proxy && proxy.trim().length > 0) {
     args.push("--proxy", proxy);
   }
+  const config = loadServiceConfig();
+  if (config.cookiePath) {
+    args.push("--cookies", join(config.dataDir, config.cookiePath));
+  }
 
   args.push(
     "--flat-playlist",
     "--playlist-items",
     "0",
     "-J",
-    '--sleep-requests',
-    '1',
+    "--sleep-requests",
+    "1",
     "--no-warnings",
     buildProfileUrl(accountId),
   );
@@ -204,7 +210,7 @@ export async function fetchTikTokProfilePayload(input: {
   accountId: string;
   proxy?: string;
   categoryId?: number;
-  zhName?: string
+  zhName?: string;
   runner: ProcessRunner;
 }): Promise<InstarStarSyncPayload> {
   const starName = normalizeStarName(input.accountId);
@@ -232,7 +238,12 @@ export async function fetchTikTokProfilePayload(input: {
     throw new Error("patch-yt-dlp 输出 JSON 解析失败");
   }
 
-  return parseProfilePayload(data, input.accountId, input.categoryId, input.zhName);
+  return parseProfilePayload(
+    data,
+    input.accountId,
+    input.categoryId,
+    input.zhName,
+  );
 }
 
 export async function syncTikTokProfileBeforeFetch(

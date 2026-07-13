@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { loadServiceConfig } from "../config.ts";
 import type { ProcessRunner, VideoInfo } from "../types.ts";
 
 interface RawEntry {
@@ -24,6 +26,10 @@ export async function parse(
   }
   if (proxy !== undefined) {
     args.push("--proxy", proxy);
+  }
+  const config = loadServiceConfig();
+  if (config.cookiePath) {
+    args.push("--cookies", join(config.dataDir, config.cookiePath));
   }
   args.push(url);
 
