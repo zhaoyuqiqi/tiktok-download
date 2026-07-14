@@ -58,7 +58,7 @@ describe("fetchPipeline", () => {
       lastVideoId: "v3",
     });
 
-    expect(calledIds).toEqual(["v5", "v4"]);
+    expect(calledIds).toEqual(["v4", "v5"]);
     expect(posts.map((p) => p.postId)).toEqual(["v4", "v5"]);
   });
 

@@ -328,6 +328,7 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
   let dedupSkippedCount = 0;
   let newCount = 0;
   let latestListedPostId: string | undefined;
+  let lastPendingPostId: string | undefined;
   let latestPublishedAt = existing?.lastPostAt ?? null;
 
   if (input.beforeFetchPosts !== undefined) {
@@ -349,8 +350,9 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
     proxy: input.proxy,
     traceId: input.traceId,
     isFetched: (platform, postId) => input.repo.isFetched(platform, postId),
-    onPendingRef: () => {
+    onPendingRef: (ref) => {
       listedCount += 1;
+      lastPendingPostId = ref.postId;
     },
     onSkippedFetched: (ref) => {
       dedupSkippedCount += 1;
@@ -398,7 +400,7 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
     accountId: input.accountId,
     nextRunAt,
     lastPostAt: latestPublishedAt,
-    lastVideoId: latestListedPostId ?? existing?.lastVideoId ?? null,
+    lastVideoId: lastPendingPostId ?? existing?.lastVideoId ?? null,
     active: true,
   });
 

@@ -177,6 +177,55 @@ describe("runAccountIngest", () => {
     expect(result.newCount).toBe(3);
   });
 
+  it("已抓取帖子被跳过时仍写入列表第一条作为游标", async () => {
+    const repo = createRepo();
+    const listCalls: Array<{ limit?: number }> = [];
+    const adapter = createAdapter(listCalls, 5);
+    const fetchedDetailIds: string[] = [];
+    const originalFetchDetail = adapter.fetchDetail.bind(adapter);
+    adapter.fetchDetail = async (ref, options) => {
+      fetchedDetailIds.push(ref.postId);
+      return originalFetchDetail(ref, options);
+    };
+
+    repo.upsertAccount({
+      platform: "tiktok",
+      accountId: "@alice",
+      nextRunAt: "2026-07-03T10:00:00Z",
+      lastVideoId: null,
+      active: true,
+    });
+
+    for (let i = 1; i <= 5; i += 1) {
+      repo.markFetched({
+        platform: "tiktok",
+        accountId: "@alice",
+        postId: `v-${i}`,
+        status: "success",
+        attempts: 1,
+        fetchedAt: "2026-07-03T09:00:00Z",
+      });
+    }
+
+    const result = await runAccountIngest({
+      platform: "tiktok",
+      accountId: "@alice",
+      source: "due",
+      repo,
+      adapter,
+      now: () => new Date("2026-07-03T10:00:00Z"),
+    });
+
+    expect(listCalls).toEqual([{ limit: undefined }]);
+    expect(fetchedDetailIds).toEqual([]);
+    expect(result.listedCount).toBe(5);
+    expect(result.dedupSkippedCount).toBe(5);
+    expect(result.newCount).toBe(0);
+
+    const account = repo.getAccount("tiktok", "@alice");
+    expect(account?.lastVideoId).toBe("v-5");
+  });
+
   it("due 模式无新帖且 24h 未更新时降频", async () => {
     const repo = createRepo();
     const listCalls: Array<{ limit?: number }> = [];
@@ -400,7 +449,7 @@ describe("runAccountIngest", () => {
       now: () => new Date("2026-07-03T10:00:00Z"),
     });
 
-    const firstOpenIndex = events.findIndex((event) => event === "open:v-3");
+    const firstOpenIndex = events.findIndex((event) => event === "open:v-1");
     const secondFetchIndex = events.findIndex((event) => event === "fetch:v-2");
 
     expect(firstOpenIndex).toBeGreaterThanOrEqual(0);
@@ -427,7 +476,7 @@ describe("runAccountIngest", () => {
       },
     });
 
-    expect(callbackPostIds).toEqual(["v-3", "v-2", "v-1"]);
+    expect(callbackPostIds).toEqual(["v-1", "v-2", "v-3"]);
   });
 
   it("帖子回调使用 COS object key（而不是公网 URL）", async () => {

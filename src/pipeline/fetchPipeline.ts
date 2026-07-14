@@ -33,7 +33,7 @@ function toTimestamp(value?: string): number {
  *
  * @param adapter 平台适配器
  * @param options 抓取参数
- * @returns 需要继续抓详情的帖子引用数组（新到旧顺序）
+ * @returns 需要继续抓详情的帖子引用数组（旧到新顺序）
  */
 async function listPendingRefs(adapter: PlatformAdapter, options: FetchPipelineOptions): Promise<PlatformPostRef[]> {
   debugLog("fetch.list.start", {
@@ -60,6 +60,9 @@ async function listPendingRefs(adapter: PlatformAdapter, options: FetchPipelineO
   const pendingRefs = options.lastVideoId
     ? refs.slice(0, Math.max(0, refs.findIndex((item) => item.postId === options.lastVideoId)))
     : refs;
+
+  // 反转为从旧到新，确保详情抓取按时间正序处理
+  pendingRefs.reverse();
 
   debugLog("fetch.pending_refs", {
     traceId: options.traceId,
