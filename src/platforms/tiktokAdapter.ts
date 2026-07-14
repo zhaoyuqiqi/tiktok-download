@@ -107,7 +107,6 @@ export class TikTokAdapter implements PlatformAdapter {
     options?: ListPostsOptions,
   ): Promise<PlatformPostRef[]> {
     const args = [
-      "-J",
       "--flat-playlist",
       "--sleep-requests",
       "2",
