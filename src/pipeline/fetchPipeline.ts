@@ -3,7 +3,6 @@ import type { PlatformAdapter, PlatformPostRef, Post } from "../platforms/adapte
 
 export interface FetchPipelineOptions {
   accountId: string;
-  lastVideoId?: string;
   limit?: number;
   proxy?: string;
   traceId?: string;
@@ -29,7 +28,8 @@ function toTimestamp(value?: string): number {
 }
 
 /**
- * 拉取账号帖子引用并根据 `lastVideoId` 截断出待处理列表。
+ * 拉取账号帖子引用并反转为从旧到新顺序。
+ * 去重由 `isFetched` 在 yt-dlp 层和流式循环中完成，不再依赖游标截断。
  *
  * @param adapter 平台适配器
  * @param options 抓取参数
@@ -54,24 +54,19 @@ async function listPendingRefs(adapter: PlatformAdapter, options: FetchPipelineO
     platform: adapter.platform,
     accountId: options.accountId,
     listedCount: refs.length,
-    lastVideoId: options.lastVideoId ?? null,
   });
 
-  const pendingRefs = options.lastVideoId
-    ? refs.slice(0, Math.max(0, refs.findIndex((item) => item.postId === options.lastVideoId)))
-    : refs;
-
   // 反转为从旧到新，确保详情抓取按时间正序处理
-  pendingRefs.reverse();
+  refs.reverse();
 
   debugLog("fetch.pending_refs", {
     traceId: options.traceId,
     platform: adapter.platform,
     accountId: options.accountId,
-    pendingCount: pendingRefs.length,
+    pendingCount: refs.length,
   });
 
-  return pendingRefs;
+  return refs;
 }
 
 /**

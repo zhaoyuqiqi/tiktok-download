@@ -23,7 +23,7 @@ function fakePost(id: string, publishedAt?: string): Post {
 }
 
 describe("fetchPipeline", () => {
-  it("collectNewPosts: 过滤 lastVideoId 之前的帖子并按发布时间升序返回", async () => {
+  it("collectNewPosts: 通过 isFetched 跳过已抓取帖子并按发布时间升序返回", async () => {
     const refs = [fakeRef("v5"), fakeRef("v4"), fakeRef("v3"), fakeRef("v2")];
     const detailMap = new Map<string, Post>([
       ["v5", fakePost("v5", "2026-07-03T10:03:00.000Z")],
@@ -55,7 +55,7 @@ describe("fetchPipeline", () => {
 
     const posts = await collectNewPosts(adapter, {
       accountId: "@alice",
-      lastVideoId: "v3",
+      isFetched: (_platform, postId) => postId === "v3" || postId === "v2",
     });
 
     expect(calledIds).toEqual(["v4", "v5"]);

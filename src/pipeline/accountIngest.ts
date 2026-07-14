@@ -345,7 +345,6 @@ export async function runAccountIngest(input: RunAccountIngestInput): Promise<Ru
 
   for await (const post of collectNewPostsStream(input.adapter, {
     accountId: input.accountId,
-    lastVideoId: existing?.lastVideoId ?? undefined,
     limit: input.source === "manual" ? (input.manualLimit ?? 100) : undefined,
     proxy: input.proxy,
     traceId: input.traceId,
