@@ -1,0 +1,16 @@
+{
+  "change": "decouple-worker-executors",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "1b3cb0eac3d9e4d18b7405a476e0a009cb3dbc39f514fc40409d54426723c6aa",
+  "files": [
+    { "path": "openspec/changes/decouple-worker-executors/proposal.md", "sha256": "8508dcb99337e31c577a6f409fb4f3fbaca685af641eba638bcb54cca14d3c78" },
+    { "path": "openspec/changes/decouple-worker-executors/design.md", "sha256": "84aabdee3e6f5d3be67af8f40f2ef0ae874517d1f8628dfc659310199d863d4c" },
+    { "path": "openspec/changes/decouple-worker-executors/tasks.md", "sha256": "ec0e312ce0f67d165c150c4097916dc81b885eeef48335e13f7191061a37eb95" },
+    { "path": "openspec/changes/decouple-worker-executors/specs/tiktok-fetch-pipeline/spec.md", "sha256": "1068ec1e46b36cc2b8c088d9fd9f18ba898f505875c72f2722e99b24a80ce22d" },
+    { "path": "openspec/changes/decouple-worker-executors/specs/tiktok-fetch-service/spec.md", "sha256": "10bb6a6b8c84ad500ed2dc296cd2e198dade8f44f8592f2afdd219c62ce1b2d2" },
+    { "path": "openspec/changes/decouple-worker-executors/specs/worker-execution/spec.md", "sha256": "32894d275d37c90dae0c40b41e5409b0b91400dc902dc540e3ebbcfcc7ff4442" }
+  ]
+}
