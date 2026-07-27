@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs/promises";
 import { Readable } from "node:stream";
 import { sleep } from "bun";
 import type { ClaimedAccountTask } from "../workers/protocol.ts";
@@ -314,24 +315,25 @@ export abstract class BaseWorker {
   }
 
   private async uploadPostStreamToCos(post: Post, key: string) {
+    const filePath = `/tmp/${key}`
     const media = await this.runner.runStream([
       ...this.cookieArgs(),
       "--no-playlist",
-      "-o",
-      "-",
       "--sleep-interval",
       "5",
       "--max-sleep-interval",
       "15",
-      '-v',
+      "-o",
+      filePath,
       post.sourceUrl,
     ]);
-    const putPromise = this.uploader.putObject({ Key: key, Body: media.stdout });
     const exitCode = await media.exited;
     if (exitCode !== 0) {
       throw new Error(`媒体流读取失败, exitCode=${exitCode}`);
     }
-    await putPromise;
+    console.log(filePath,'下载完成，准备上传');
+    await this.uploader.putObject({ Key: key, FilePath: filePath });
+    await fs.unlink(filePath);
   }
 
   private async runLoggedUpload(
