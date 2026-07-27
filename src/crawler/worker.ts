@@ -323,6 +323,7 @@ export abstract class BaseWorker {
       "5",
       "--max-sleep-interval",
       "15",
+      '-v',
       post.sourceUrl,
     ]);
     const putPromise = this.uploader.putObject({ Key: key, Body: media.stdout });
@@ -517,6 +518,7 @@ export abstract class BaseWorker {
           durationMs: Date.now() - postStartedAt,
           error: message,
         });
+        console.log('post.process.failed', error)
         await this.syncPostFailure(
           ref.postId,
           message,
