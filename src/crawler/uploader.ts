@@ -49,6 +49,7 @@ export class CosUploader {
 
   putObject(params: CosPutObjectInput) {
     const Bucket = process.env.BUCKET;
+    const Region = process.env.REGION?.trim() || "ap-beijing";
     if (!Bucket) {
       throw new Error("Bucket不存在或配置错误");
     }
@@ -56,7 +57,7 @@ export class CosUploader {
       Key: params.Key,
       Body: params.Body,
       Bucket,
-      Region: "ap-beijing",
+      Region,
     });
   }
 

@@ -1,5 +1,9 @@
 import path from "node:path";
-import { uploader } from "./uploader";
+import { Readable } from "node:stream";
+import { sleep } from "bun";
+import type { ClaimedAccountTask } from "../workers/protocol.ts";
+import { Runner } from "./runner";
+import type { InstarPost } from "./types/instar";
 import type {
   InstarStarSyncPayload,
   PlatformPostRef,
@@ -8,7 +12,8 @@ import type {
   RawTikTokProfileFromYtDlp,
   SetupOptions,
 } from "./types/yt-dlp";
-import { Runner } from "./runner";
+import { uploader } from "./uploader";
+import { isImagePost } from "./utils/is";
 import {
   buildCosObjectKey,
   ensureJson,
@@ -17,38 +22,82 @@ import {
   safeSegment,
   toIsoOrUndefined,
 } from "./utils/normalize";
-import { Readable } from "node:stream";
 import { sleepRandom2000To8000 } from "./utils/sleep";
-import { isImagePost } from "./utils/is";
-import type { InstarPost } from "./types/instar";
-import { sleep } from "bun";
 
-abstract class AbstractWorker {
-  /** 帖子是否存在或已抓取 */
-  abstract isExists(postId: string): Promise<boolean>;
-  /** 用户开始抓取 */
-  abstract onStarStart?(starName: string): Promise<void>;
-  /** 帖子开始抓取 */
-  abstract onPostStart?(postId: string): Promise<void>;
-  /** 帖子结束抓取 */
-  abstract onPostEnd?(postId: string): Promise<void>;
-  /** 用户抓取结束 */
-  abstract onStarEnd?(starName: string): Promise<void>;
-
-  /** 同步明星个人信息 */
-  abstract syncStarProfile(payload: InstarStarSyncPayload): Promise<void>;
-  /** 同步帖子信息 */
-  abstract syncPostDetail(payload: InstarPost): Promise<void>;
-  /** 领取抓取任务 返回的内容为用户的starName 即唯一标识 */
-  abstract claimTasks(): Promise<string[]>;
+export interface AccountExecutionSummary extends Record<string, unknown> {
+  outcome: "success" | "partial";
+  newCount: number;
+  failedCount: number;
+  lastPostAt?: string;
+  lastVideoId?: string;
 }
 
-export abstract class BaseWorker extends AbstractWorker {
-  private uploader = uploader;
-  private runner = new Runner(path.join(__dirname, "yt-dlp/patch-yt-dlp.sh"));
-  /** 获取个人信息 */
+export interface BaseWorkerOptions {
+  idleWaitMs?: number;
+  maxEmptyClaims?: number;
+  sleep?: (delayMs: number) => Promise<void>;
+  executeTask?: (
+    task: ClaimedAccountTask,
+  ) => Promise<AccountExecutionSummary>;
+}
+
+export abstract class BaseWorker {
+  private readonly uploader = uploader;
+  private readonly runner = new Runner(
+    path.join(__dirname, "yt-dlp/patch-yt-dlp.sh"),
+  );
+  private readonly idleWaitMs: number;
+  private readonly maxEmptyClaims: number;
+  private readonly sleepImpl: (delayMs: number) => Promise<void>;
+  private readonly executeTaskOverride?: BaseWorkerOptions["executeTask"];
+
+  protected constructor(options: BaseWorkerOptions = {}) {
+    this.idleWaitMs = options.idleWaitMs ?? 10_000;
+    this.maxEmptyClaims = options.maxEmptyClaims ?? 3;
+    this.sleepImpl = options.sleep ?? sleep;
+    this.executeTaskOverride = options.executeTask;
+
+    if (this.idleWaitMs < 0 || this.maxEmptyClaims <= 0) {
+      throw new Error("worker 空领等待参数无效");
+    }
+  }
+
+  protected abstract onWorkerStart(): Promise<void>;
+  protected abstract onWorkerEnd(): Promise<void>;
+  protected abstract claimTasks(): Promise<ClaimedAccountTask | null>;
+  protected abstract onTaskStart(task: ClaimedAccountTask): Promise<void>;
+  protected abstract onTaskSuccess(
+    task: ClaimedAccountTask,
+    summary: AccountExecutionSummary,
+  ): Promise<void>;
+  protected abstract onTaskFailure(
+    task: ClaimedAccountTask,
+    error: unknown,
+  ): Promise<void>;
+  protected abstract onTaskEnd(task: ClaimedAccountTask): Promise<void>;
+  protected abstract isExists(postId: string): Promise<boolean>;
+  protected abstract syncStarProfile(
+    payload: InstarStarSyncPayload,
+  ): Promise<void>;
+  protected abstract syncPostDetail(
+    payload: InstarPost,
+    publishedAt?: string,
+  ): Promise<void>;
+  protected abstract syncPostFailure(
+    postId: string,
+    error: string,
+  ): Promise<void>;
+  protected onPostStart?(_postId: string): Promise<void>;
+  protected onPostEnd?(_postId: string): Promise<void>;
+
+  private cookieArgs(): string[] {
+    const cookiePath = process.env.COOKIE_PATH?.trim();
+    return cookiePath ? ["--cookies", cookiePath] : [];
+  }
+
   private async fetchProfile(starName: string) {
     const args: string[] = [
+      ...this.cookieArgs(),
       "--flat-playlist",
       "--playlist-items",
       "0",
@@ -69,13 +118,11 @@ export abstract class BaseWorker extends AbstractWorker {
       throw new Error("patch-yt-dlp 输出为空");
     }
 
-    let data: RawTikTokProfileFromYtDlp;
     try {
-      data = JSON.parse(jsonRaw) as RawTikTokProfileFromYtDlp;
+      return JSON.parse(jsonRaw) as RawTikTokProfileFromYtDlp;
     } catch {
       throw new Error("patch-yt-dlp 输出 JSON 解析失败");
     }
-    return data;
   }
 
   private ytdlpProfileResponse2Instar(
@@ -84,9 +131,8 @@ export abstract class BaseWorker extends AbstractWorker {
     zhName?: string,
     categoryId?: number,
   ): InstarStarSyncPayload {
-    const fallbackStarName = accountId;
+    const starName = data.uploader || accountId || data.title || "";
     const insStarId = data.uploader_id ?? "";
-    const starName = data.uploader || fallbackStarName || data.title || "";
     const fullName = data.channel || starName;
     const avatar =
       data.avatar_larger ??
@@ -114,45 +160,51 @@ export abstract class BaseWorker extends AbstractWorker {
       isDel: 0,
     };
   }
-  private postDetailCleanse(detail: RawDetailJson, ref: PlatformPostRef): Post {
-    const raw = detail;
-    const postId = raw.id?.trim() || ref.postId;
-    const sourceUrl = raw.webpage_url ?? ref.url;
 
-    const mediaType = raw.video_ext === "none" ? "image" : "video";
+  private postDetailCleanse(detail: RawDetailJson, ref: PlatformPostRef): Post {
+    const postId = detail.id?.trim() || ref.postId;
+    const sourceUrl = detail.webpage_url ?? ref.url;
+    const mediaType = detail.video_ext === "none" ? "image" : "video";
     const thumbnailUrl =
-      raw.thumbnail ?? raw.cover ?? raw.cover_url ?? raw.thumbnail_url ?? "";
+      detail.thumbnail ??
+      detail.cover ??
+      detail.cover_url ??
+      detail.thumbnail_url ??
+      "";
 
     return {
       platform: "tiktok",
       accountId: ref.accountId,
       postId,
       sourceUrl,
-      title: raw.title ?? ref.title,
-      description: raw.description,
-      authorHandle: raw.uploader_id,
-      publishedAt: toIsoOrUndefined(raw.timestamp),
+      title: detail.title ?? ref.title,
+      description: detail.description,
+      authorHandle: detail.uploader_id,
+      publishedAt: toIsoOrUndefined(detail.timestamp),
       mediaType,
-      videoExt: typeof raw.ext === "string" ? raw.ext : undefined,
+      videoExt: typeof detail.ext === "string" ? detail.ext : undefined,
       thumbnailUrl,
       rawDetail: detail,
     };
   }
 
-  /** 获取列表 */
   private async fetchPostList(starName: string, limit?: number) {
     const args = [
+      ...this.cookieArgs(),
       "--flat-playlist",
       "--sleep-requests",
       "2",
       "--print-json",
       "--lazy-playlist",
     ];
-    if (limit) {
-      args.push("--playlist-end", `${limit}`);
+    if (limit !== undefined && limit > 0) {
+      args.push("--playlist-end", String(limit));
     }
     args.push(`https://www.tiktok.com/@${starName}`);
-    const entries = await this.runner.generateRun(args, this.isExists);
+
+    const entries = await this.runner.generateRun(args, (postId) =>
+      this.isExists(postId),
+    );
     const refs: PlatformPostRef[] = [];
     for (const entry of entries) {
       const postId = entry.id?.trim() ?? "";
@@ -163,23 +215,23 @@ export abstract class BaseWorker extends AbstractWorker {
         entry.webpage_url ??
         entry.url ??
         `https://www.tiktok.com/@${starName}/video/${postId}`;
-      const ref: PlatformPostRef = {
+      refs.push({
         platform: "tiktok",
         accountId: starName,
         postId,
         url,
-      };
-      if (entry.title !== undefined) {
-        ref.title = entry.title;
-      }
-      refs.push(ref);
+        ...(entry.title === undefined ? {} : { title: entry.title }),
+      });
     }
     return refs;
   }
-  /** 获取详情 */
+
   private async fetchPostDetail(ref: PlatformPostRef) {
-    const args = ["-J", ref.url];
-    const result = await this.runner.run(args);
+    const result = await this.runner.run([
+      ...this.cookieArgs(),
+      "-J",
+      ref.url,
+    ]);
     if (result.code !== 0) {
       throw new Error(`yt-dlp 详情抓取失败: ${result.stderr || result.stdout}`);
     }
@@ -193,12 +245,8 @@ export abstract class BaseWorker extends AbstractWorker {
   ): string {
     const ext = normalizeExtFromUrl(avatarUrl);
     const safePrefix = safeSegment(keyPrefix).replace(/\/+$/g, "");
-    const timestamp = Date.now();
-    const keyBody = `profile-avatar/${starName}_${timestamp}.${ext}`;
-    if (safePrefix.length === 0) {
-      return keyBody;
-    }
-    return `${safePrefix}/${keyBody}`;
+    const keyBody = `profile-avatar/${starName}_${Date.now()}.${ext}`;
+    return safePrefix.length === 0 ? keyBody : `${safePrefix}/${keyBody}`;
   }
 
   private async uploadRemoteUrl2Cos(url: string, key: string) {
@@ -208,16 +256,13 @@ export abstract class BaseWorker extends AbstractWorker {
         `远程资源下载失败: ${response.status} ${response.statusText}`,
       );
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const body = Readable.from([buffer]);
-    return this.uploader.putObject({
-      Key: key,
-      Body: body,
-    });
+    const body = Readable.from([Buffer.from(await response.arrayBuffer())]);
+    return this.uploader.putObject({ Key: key, Body: body });
   }
 
   private async uploadPostStreamToCos(post: Post, key: string) {
-    const args = [
+    const media = await this.runner.runStream([
+      ...this.cookieArgs(),
       "--no-playlist",
       "-o",
       "-",
@@ -226,13 +271,8 @@ export abstract class BaseWorker extends AbstractWorker {
       "--max-sleep-interval",
       "15",
       post.sourceUrl,
-    ];
-    const media = await this.runner.runStream(args);
-
-    const putPromise = this.uploader.putObject({
-      Key: key,
-      Body: media.stdout,
-    });
+    ]);
+    const putPromise = this.uploader.putObject({ Key: key, Body: media.stdout });
     const exitCode = await media.exited;
     if (exitCode !== 0) {
       throw new Error(`媒体流读取失败, exitCode=${exitCode}`);
@@ -241,24 +281,24 @@ export abstract class BaseWorker extends AbstractWorker {
   }
 
   private async handleProfile(options: SetupOptions) {
+    const { zhName, starName, category } = options;
     try {
-      const { zhName, starName, category } = options;
       const profile = await this.fetchProfile(starName);
-      const instarProfile = this.ytdlpProfileResponse2Instar(
+      const payload = this.ytdlpProfileResponse2Instar(
         starName,
         profile,
         zhName,
         category,
       );
-      if (instarProfile.avatar) {
+      if (payload.avatar) {
         const avatarObjectKey = this.buildAvatarObjectKey(
           starName,
-          instarProfile.avatar,
+          payload.avatar,
         );
-        await this.uploadRemoteUrl2Cos(instarProfile.avatar, avatarObjectKey);
-        instarProfile.avatar = avatarObjectKey;
+        await this.uploadRemoteUrl2Cos(payload.avatar, avatarObjectKey);
+        payload.avatar = avatarObjectKey;
       }
-      await this.syncStarProfile(instarProfile);
+      await this.syncStarProfile(payload);
     } catch (error) {
       throw new Error(
         `抓取用户信息同步失败: ${error instanceof Error ? error.message : String(error)}`,
@@ -266,71 +306,18 @@ export abstract class BaseWorker extends AbstractWorker {
     }
   }
 
-  private async *collectNewPostsStream(options: SetupOptions) {
-    const { starName } = options;
-    const refs = await this.fetchPostList(starName, 100);
-    for (const ref of refs) {
-      if (await this.isExists(ref.postId)) {
-        console.log("fetch.detail.skip_fetched", ref.postId);
-        continue;
-      }
-      await this.onPostStart?.(ref.postId);
-      const detail = await this.fetchPostDetail(ref);
-      await sleepRandom2000To8000();
-      const post = this.postDetailCleanse(detail, ref);
-      yield post;
-    }
-  }
-
-  private async handlePostDetail(options: SetupOptions) {
-    try {
-      for await (const post of this.collectNewPostsStream(options)) {
-        const rawDetail = post.rawDetail;
-        const imageMode = post.mediaType === "image" || isImagePost(rawDetail);
-
-        const mediaResult = await (imageMode
-          ? this.uploadImagePostMedia(post)
-          : this.uploadVideoPostMedia(post));
-
-        await this.syncPostDetail(
-          formatTikTokPost({
-            starId: post.accountId,
-            postId: post.postId,
-            mediaType: post.mediaType,
-            videoUrl: mediaResult.mediaUrl,
-            thumbnailUrl: mediaResult.thumbnailUrl,
-            publishedAt: post.publishedAt,
-            title: post.title,
-            description: post.description,
-            authorHandle: post.authorHandle,
-            rawDetail: post.rawDetail,
-          }),
-        );
-        await this.onPostEnd?.(post.postId);
-      }
-    } catch (error) {
-      console.log(error);
-      throw new Error("摘取详情失败");
-    }
-  }
-
   private async uploadImagePostMedia(post: Post) {
-    const url = post.thumbnailUrl;
     const imageObjectKey = buildCosObjectKey(post, {
       prefix: "fengniao",
       suffix: "image",
       ext: "jpg",
     });
-    await this.uploadRemoteUrl2Cos(url, imageObjectKey);
-    return {
-      mediaUrl: imageObjectKey,
-      thumbnailUrl: imageObjectKey,
-    };
+    await this.uploadRemoteUrl2Cos(post.thumbnailUrl, imageObjectKey);
+    return { mediaUrl: imageObjectKey, thumbnailUrl: imageObjectKey };
   }
+
   private async uploadVideoPostMedia(post: Post) {
-    const objectKey = buildCosObjectKey(post, {
-      prefix: "fengniao",
-    });
+    const objectKey = buildCosObjectKey(post, { prefix: "fengniao" });
     await this.uploadPostStreamToCos(post, objectKey);
     const thumbnailObjectKey = buildCosObjectKey(post, {
       prefix: "fengniao",
@@ -338,44 +325,121 @@ export abstract class BaseWorker extends AbstractWorker {
       ext: "jpg",
     });
     await this.uploadRemoteUrl2Cos(post.thumbnailUrl, thumbnailObjectKey);
+    return { mediaUrl: objectKey, thumbnailUrl: thumbnailObjectKey };
+  }
+
+  private async executeAccountTask(
+    task: ClaimedAccountTask,
+  ): Promise<AccountExecutionSummary> {
+    const setup: SetupOptions = {
+      starName: task.accountId,
+      ...(task.options.categoryId === undefined
+        ? {}
+        : { category: task.options.categoryId }),
+      ...(task.options.zhName === undefined
+        ? {}
+        : { zhName: task.options.zhName }),
+    };
+    await this.handleProfile(setup);
+    const refs = await this.fetchPostList(task.accountId, task.options.limit ?? 100);
+
+    let newCount = 0;
+    let failedCount = 0;
+    let lastPostAt: string | undefined;
+    let lastVideoId: string | undefined;
+
+    for (const ref of refs) {
+      if (await this.isExists(ref.postId)) {
+        continue;
+      }
+      await this.onPostStart?.(ref.postId);
+      try {
+        const detail = await this.fetchPostDetail(ref);
+        await sleepRandom2000To8000();
+        const post = this.postDetailCleanse(detail, ref);
+        const imageMode =
+          post.mediaType === "image" || isImagePost(post.rawDetail);
+        const mediaResult = await (imageMode
+          ? this.uploadImagePostMedia(post)
+          : this.uploadVideoPostMedia(post));
+        const payload = formatTikTokPost({
+          starId: post.accountId,
+          postId: post.postId,
+          mediaType: post.mediaType,
+          videoUrl: mediaResult.mediaUrl,
+          thumbnailUrl: mediaResult.thumbnailUrl,
+          publishedAt: post.publishedAt,
+          title: post.title,
+          description: post.description,
+          authorHandle: post.authorHandle,
+          rawDetail: post.rawDetail,
+        });
+        await this.syncPostDetail(payload, post.publishedAt);
+        newCount += 1;
+        if (
+          post.publishedAt !== undefined &&
+          (lastPostAt === undefined || post.publishedAt > lastPostAt)
+        ) {
+          lastPostAt = post.publishedAt;
+          lastVideoId = post.postId;
+        }
+      } catch (error) {
+        failedCount += 1;
+        await this.syncPostFailure(
+          ref.postId,
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        await this.onPostEnd?.(ref.postId);
+      }
+    }
+
+    if (failedCount > 0 && newCount === 0) {
+      throw new Error(`账号内 ${failedCount} 个帖子全部处理失败`);
+    }
+
     return {
-      mediaUrl: objectKey,
-      thumbnailUrl: thumbnailObjectKey,
+      outcome: failedCount > 0 ? "partial" : "success",
+      newCount,
+      failedCount,
+      ...(lastPostAt === undefined ? {} : { lastPostAt }),
+      ...(lastVideoId === undefined ? {} : { lastVideoId }),
     };
   }
 
-  async autoSetup() {
-    let times = 0;
-    while (true) {
-      const starNames = await this.claimTasks().catch(() => []);
-      if (!starNames.length) {
-        if (times >= 10) {
-          // 10次都没有任务就结束
-          return;
-        }
-        times++;
-        await sleep(5 * 60_000);
-        continue;
-      }
-      for (const starName of starNames) {
-        try {
-          await this.manualSetup({ starName });
-        } catch (error) {
-          console.log(starName + "抓取出错", error);
-        }
-      }
-    }
-  }
-  // 手动更新
-  async manualSetup(options: SetupOptions) {
+  async autoSetup(): Promise<void> {
+    await this.onWorkerStart();
+    let emptyClaims = 0;
     try {
-      await this.onStarStart?.(options.starName);
-      await this.handleProfile(options);
-      await this.handlePostDetail(options);
-    } catch (error) {
-      console.log(error);
+      while (emptyClaims < this.maxEmptyClaims) {
+        const task = await this.claimTasks();
+        if (task === null) {
+          emptyClaims += 1;
+          if (emptyClaims < this.maxEmptyClaims) {
+            await this.sleepImpl(this.idleWaitMs);
+          }
+          continue;
+        }
+
+        emptyClaims = 0;
+        await this.onTaskStart(task);
+        try {
+          let summary: AccountExecutionSummary;
+          try {
+            summary = this.executeTaskOverride
+              ? await this.executeTaskOverride(task)
+              : await this.executeAccountTask(task);
+          } catch (error) {
+            await this.onTaskFailure(task, error);
+            continue;
+          }
+          await this.onTaskSuccess(task, summary);
+        } finally {
+          await this.onTaskEnd(task);
+        }
+      }
     } finally {
-      await this.onStarEnd?.(options.starName);
+      await this.onWorkerEnd();
     }
   }
 }

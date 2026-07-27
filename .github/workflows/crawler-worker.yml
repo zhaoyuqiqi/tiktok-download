@@ -1,0 +1,63 @@
+name: crawler-worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crawler-worker
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --disable-pip-version-check curl-cffi certifi
+          bun install --frozen-lockfile
+          chmod +x src/crawler/yt-dlp/patch-yt-dlp.sh
+
+      - name: Prepare TikTok cookies
+        env:
+          TIKTOK_COOKIES: ${{ secrets.TIKTOK_COOKIES }}
+        run: |
+          if [ -n "${TIKTOK_COOKIES:-}" ]; then
+            cookie_path="${RUNNER_TEMP}/tiktok-cookies.txt"
+            printf '%s' "$TIKTOK_COOKIES" > "$cookie_path"
+            chmod 600 "$cookie_path"
+            echo "COOKIE_PATH=$cookie_path" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run crawler worker
+        env:
+          APP_WORKER_API_BASE_URL: ${{ secrets.WORKER_API_BASE_URL }}
+          APP_WORKER_API_TOKEN: ${{ secrets.WORKER_API_TOKEN }}
+          APP_INSTAR_STAR_SYNC_URL: ${{ secrets.INSTAR_STAR_SYNC_URL }}
+          APP_INSTAR_STAR_SYNC_AUTH_BEARER: ${{ secrets.INSTAR_STAR_SYNC_TOKEN }}
+          APP_INSTAR_POST_WEBHOOK_URL: ${{ secrets.INSTAR_POST_SYNC_URL }}
+          APP_INSTAR_POST_WEBHOOK_AUTH_BEARER: ${{ secrets.INSTAR_POST_SYNC_TOKEN }}
+          APP_INSTAR_WEBHOOK_URL: ${{ secrets.INSTAR_ACCOUNT_WEBHOOK_URL }}
+          APP_INSTAR_WEBHOOK_AUTH_BEARER: ${{ secrets.INSTAR_ACCOUNT_WEBHOOK_TOKEN }}
+          BUCKET: ${{ secrets.COS_BUCKET }}
+          REGION: ${{ secrets.COS_REGION }}
+        run: bun run worker:github-actions

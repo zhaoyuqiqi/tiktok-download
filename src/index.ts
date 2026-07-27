@@ -19,6 +19,12 @@ import { createApp } from "./server.ts";
 import { initSchema, openDatabase } from "./storage/db.ts";
 import { StateRepository } from "./storage/repository.ts";
 import { uploader } from "./upload/uploader.ts";
+import { LocalWorker } from "./workers/localWorker.ts";
+import type { ClaimedAccountTask } from "./workers/protocol.ts";
+import {
+  assertGithubActionsWakeConfigured,
+  wakeGithubActionsWorkflow,
+} from "./workers/githubActionsWakeService.ts";
 import { YtDlpRunner } from "./ytdlp-manager/runner.ts";
 import { YtDlpService } from "./ytdlp-manager/ytDlpService.ts";
 
@@ -109,7 +115,7 @@ export async function main(): Promise<void> {
     config.cos.bucket.length > 0 &&
     config.cos.region.length > 0;
 
-  if (!cosConfigured) {
+  if (config.workerMode === "local" && !cosConfigured) {
     throw new Error("COS 配置不完整：请至少配置 COS_BUCKET/COS_REGION");
   }
 
@@ -125,7 +131,15 @@ export async function main(): Promise<void> {
     accountWebhookBearer: instarWebhookBearer,
     postWebhookUrl: instarPostWebhookUrl,
     postWebhookBearer: instarPostWebhookBearer,
-  } = assertRequiredWebhookEnv(process.env);
+  } =
+    config.workerMode === "local"
+      ? assertRequiredWebhookEnv(process.env)
+      : {
+          accountWebhookUrl: "",
+          accountWebhookBearer: "",
+          postWebhookUrl: "",
+          postWebhookBearer: "",
+        };
 
   const instarClient =
     instarWebhookUrl.length > 0
@@ -154,127 +168,202 @@ export async function main(): Promise<void> {
         })
       : null;
 
-  const dueScheduler = new DueScheduler({
-    concurrency: config.globalConcurrency,
-    async listDueAccounts(limit) {
-      return repo.listDueAccounts({
+  const runAccount = async (
+    accountId: string,
+    source: "due" | "manual",
+    options?: { limit?: number; categoryId?: number; zhName?: string },
+  ): Promise<Record<string, unknown>> => {
+    const traceId = createTraceId(accountId, source);
+    debugLog("run_account.start", {
+      traceId,
+      platform,
+      accountId,
+      source,
+    });
+
+    try {
+      const adapter = await getAdapter();
+      const result = await runAccountIngest({
         platform,
-        nowIso: new Date().toISOString(),
-        limit,
+        accountId,
+        source,
+        repo,
+        adapter,
+        media: mediaPipeline,
+        proxy: config.proxy,
+        manualLimit: source === "manual" ? options?.limit : undefined,
+        manualCategoryId: source === "manual" ? options?.categoryId : undefined,
+        manualZhName: source === "manual" ? options?.zhName : undefined,
+        traceId,
+        beforeFetchPosts:
+          instarStarSyncClient !== null
+            ? async (beforeFetchInput) => {
+                await syncTikTokProfileBeforeFetch(
+                  {
+                    accountId: beforeFetchInput.accountId,
+                    proxy: beforeFetchInput.proxy,
+                    traceId: beforeFetchInput.traceId,
+                    categoryId: beforeFetchInput.categoryId,
+                    zhName: beforeFetchInput.zhName,
+                  },
+                  {
+                    syncClient: instarStarSyncClient,
+                    runner: await getProfileRunner(),
+                    avatarUpload: {
+                      cosClient: uploader,
+                      bucket: config.cos.bucket,
+                      region: config.cos.region,
+                      keyPrefix: config.cos.keyPrefix,
+                    },
+                  },
+                );
+              }
+            : undefined,
+        onPostSynced: async (event) => {
+          await instarPostSyncClient.notifyPostSynced(
+            toInstarPostSyncedPayload({
+              platform: event.platform,
+              source: event.source,
+              starId: event.starId,
+              postId: event.postId,
+              sourceUrl: event.sourceUrl,
+              mediaType: event.mediaType,
+              videoUrl: event.videoUrl,
+              thumbnailUrl: event.thumbnailUrl,
+              publishedAt: event.publishedAt,
+              title: event.title,
+              description: event.description,
+              authorHandle: event.authorHandle,
+              rawDetail: event.rawDetail,
+            }),
+          );
+        },
       });
-    },
-    async runAccount(accountId, source, options) {
-      const traceId = createTraceId(accountId, source);
-      debugLog("run_account.start", {
+
+      try {
+        await instarClient.notifyAccountCompleted(
+          toInstarAccountCompletedPayload(accountId, 1),
+        );
+      } catch (callbackError) {
+        debugLog("instar.callback.failed", {
+          traceId,
+          accountId,
+          status: 1,
+          error:
+            callbackError instanceof Error
+              ? callbackError.message
+              : String(callbackError),
+        });
+      }
+
+      debugLog("run_account.done", {
         traceId,
         platform,
         accountId,
         source,
+        result,
       });
-
+      return { ...result };
+    } catch (error) {
       try {
-        const adapter = await getAdapter();
-        const result = await runAccountIngest({
-          platform,
-          accountId,
-          source,
-          repo,
-          adapter,
-          media: mediaPipeline,
-          proxy: config.proxy,
-          manualLimit: source === "manual" ? options?.limit : undefined,
-          manualCategoryId: source === "manual" ? options?.categoryId : undefined,
-          manualZhName: source === "manual" ? options?.zhName : undefined,
-          traceId,
-          beforeFetchPosts:
-            instarStarSyncClient !== null
-              ? async (beforeFetchInput) => {
-                  await syncTikTokProfileBeforeFetch(
-                    {
-                      accountId: beforeFetchInput.accountId,
-                      proxy: beforeFetchInput.proxy,
-                      traceId: beforeFetchInput.traceId,
-                      categoryId: beforeFetchInput.categoryId,
-                      zhName: beforeFetchInput.zhName,
-                    },
-                    {
-                      syncClient: instarStarSyncClient,
-                      runner: await getProfileRunner(),
-                      avatarUpload: {
-                        cosClient: uploader,
-                        bucket: config.cos.bucket,
-                        region: config.cos.region,
-                        keyPrefix: config.cos.keyPrefix,
-                      },
-                    },
-                  );
-                }
-              : undefined,
-          onPostSynced: async (event) => {
-            await instarPostSyncClient.notifyPostSynced(
-              toInstarPostSyncedPayload({
-                platform: event.platform,
-                source: event.source,
-                starId: event.starId,
-                postId: event.postId,
-                sourceUrl: event.sourceUrl,
-                mediaType: event.mediaType,
-                videoUrl: event.videoUrl,
-                thumbnailUrl: event.thumbnailUrl,
-                publishedAt: event.publishedAt,
-                title: event.title,
-                description: event.description,
-                authorHandle: event.authorHandle,
-                rawDetail: event.rawDetail,
-              }),
-            );
-          },
-        });
-
-        try {
-          await instarClient.notifyAccountCompleted(toInstarAccountCompletedPayload(accountId, 1));
-        } catch (callbackError) {
-          debugLog("instar.callback.failed", {
-            traceId,
-            accountId,
-            status: 1,
-            error: callbackError instanceof Error ? callbackError.message : String(callbackError),
-          });
-        }
-
-        debugLog("run_account.done", {
-          traceId,
-          platform,
-          accountId,
-          source,
-          result,
-        });
-      } catch (error) {
-        try {
-          await instarClient.notifyAccountCompleted(toInstarAccountCompletedPayload(accountId, 0));
-        } catch (callbackError) {
-          debugLog("instar.callback.failed", {
-            traceId,
-            accountId,
-            status: 0,
-            error: callbackError instanceof Error ? callbackError.message : String(callbackError),
-          });
-        }
-
-        debugLog("run_account.failed", {
+        await instarClient.notifyAccountCompleted(
+          toInstarAccountCompletedPayload(accountId, 0),
+        );
+      } catch (callbackError) {
+        debugLog("instar.callback.failed", {
           traceId,
           accountId,
-          source,
-          error: error instanceof Error ? error.message : String(error),
+          status: 0,
+          error:
+            callbackError instanceof Error
+              ? callbackError.message
+              : String(callbackError),
         });
-        throw error;
       }
+
+      debugLog("run_account.failed", {
+        traceId,
+        accountId,
+        source,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  };
+
+  const localWorker =
+    config.workerMode === "local"
+      ? new LocalWorker({
+          repo,
+          concurrency: config.globalConcurrency,
+          leaseSeconds: config.workerLeaseSeconds,
+          async runTask(task: ClaimedAccountTask) {
+            return runAccount(task.accountId, task.source, task.options);
+          },
+        })
+      : null;
+
+  if (
+    config.workerMode === "github-actions" &&
+    config.workerApiToken === undefined
+  ) {
+    throw new Error(
+      "github-actions 模式必须配置 APP_WORKER_API_TOKEN",
+    );
+  }
+  if (config.workerMode === "github-actions") {
+    assertGithubActionsWakeConfigured(process.env);
+  }
+
+  const dueScheduler = new DueScheduler({
+    discoveryLimit: 100,
+    async listDueAccounts(limit, nowIso) {
+      return repo.listDueAccounts({
+        platform,
+        nowIso,
+        limit,
+      });
+    },
+    async enqueueAccountTask(accountId, source, options, nowIso) {
+      const result = repo.enqueueAccountTask({
+        platform,
+        accountId,
+        source,
+        options,
+        nowIso,
+      });
+      return { created: result.created };
+    },
+    recoverTasks(nowIso) {
+      return repo.recoverAccountTasks(nowIso);
+    },
+    countClaimableTasks() {
+      return repo.countClaimableAccountTasks();
+    },
+    countRunningTasks() {
+      return repo.countRunningAccountTasks();
+    },
+    async wakeWorkers() {
+      if (localWorker !== null) {
+        localWorker.wake();
+        return;
+      }
+      await wakeGithubActionsWorkflow();
     },
   });
 
   setInterval(() => {
-    void dueScheduler.tick();
+    void dueScheduler.tick().catch((error) => {
+      debugLog("scheduler.tick.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }, config.fetchIntervalSeconds * 1000);
+  void dueScheduler.tick().catch((error) => {
+    debugLog("scheduler.initial_tick.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   const accountSourceUrl = process.env.APP_ACCOUNT_SOURCE_URL?.trim() ?? "";
   const accountSourceBearer = process.env.APP_ACCOUNT_SOURCE_AUTH_BEARER?.trim() ?? "";
@@ -312,6 +401,15 @@ export async function main(): Promise<void> {
     platform,
     repo,
     scheduler: dueScheduler,
+    workerApi:
+      config.workerApiToken === undefined
+        ? undefined
+        : {
+            repo,
+            token: config.workerApiToken,
+            concurrency: config.globalConcurrency,
+            leaseSeconds: config.workerLeaseSeconds,
+          },
   });
 
   app.listen({
@@ -328,6 +426,9 @@ export async function main(): Promise<void> {
     fetchIntervalSeconds: config.fetchIntervalSeconds,
     accountReconcileIntervalSeconds: config.accountReconcileIntervalSeconds,
     globalConcurrency: config.globalConcurrency,
+    workerMode: config.workerMode,
+    workerLeaseSeconds: config.workerLeaseSeconds,
+    workerApiEnabled: config.workerApiToken !== undefined,
     proxy: config.proxy ? "configured" : null,
     dataDir: config.dataDir,
     cos: {

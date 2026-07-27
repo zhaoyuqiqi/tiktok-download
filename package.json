@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "worker:github-actions": "bun run src/crawler/github-actions.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

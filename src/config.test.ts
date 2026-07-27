@@ -7,6 +7,9 @@ describe("loadServiceConfig", () => {
 
     expect(cfg.fetchIntervalSeconds).toBe(300);
     expect(cfg.globalConcurrency).toBe(2);
+    expect(cfg.workerMode).toBe("local");
+    expect(cfg.workerLeaseSeconds).toBe(300);
+    expect(cfg.workerApiToken).toBeUndefined();
     expect(cfg.dataDir).toBe("./data");
     expect(cfg.proxy).toBeUndefined();
     expect(cfg.cos.keyPrefix).toBe("tiktok-download");
@@ -17,6 +20,9 @@ describe("loadServiceConfig", () => {
       APP_FETCH_INTERVAL_SECONDS: "600",
       APP_ACCOUNT_RECONCILE_INTERVAL_SECONDS: "120",
       APP_GLOBAL_CONCURRENCY: "4",
+      APP_WORKER_MODE: "github-actions",
+      APP_WORKER_LEASE_SECONDS: "180",
+      APP_WORKER_API_TOKEN: "worker-secret",
       APP_PROXY_URL: "http://127.0.0.1:7890",
       APP_DATA_DIR: "/var/lib/tiktok",
       COS_BUCKET: "demo-1250000000",
@@ -26,6 +32,9 @@ describe("loadServiceConfig", () => {
 
     expect(cfg.fetchIntervalSeconds).toBe(600);
     expect(cfg.globalConcurrency).toBe(4);
+    expect(cfg.workerMode).toBe("github-actions");
+    expect(cfg.workerLeaseSeconds).toBe(180);
+    expect(cfg.workerApiToken).toBe("worker-secret");
     expect(cfg.proxy).toBe("http://127.0.0.1:7890");
     expect(cfg.dataDir).toBe("/var/lib/tiktok");
     expect(cfg.cos.bucket).toBe("demo-1250000000");
@@ -42,6 +51,9 @@ describe("loadServiceConfig", () => {
     );
     expect(() => loadServiceConfig({ APP_FETCH_INTERVAL_SECONDS: "abc" })).toThrow(
       "APP_FETCH_INTERVAL_SECONDS 必须是正整数",
+    );
+    expect(() => loadServiceConfig({ APP_WORKER_MODE: "remote" })).toThrow(
+      "APP_WORKER_MODE 必须是 local 或 github-actions",
     );
   });
 });

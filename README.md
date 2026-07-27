@@ -98,6 +98,14 @@ COS_REGION=...
 | `APP_FETCH_INTERVAL_SECONDS` | `300` | due 调度 tick 周期（秒） |
 | `APP_ACCOUNT_RECONCILE_INTERVAL_SECONDS` | `300` | 外部名单对账周期（秒） |
 | `APP_GLOBAL_CONCURRENCY` | `2` | 全局并发上限 |
+| `APP_WORKER_MODE` | `local` | 执行器模式：`local` 或 `github-actions` |
+| `APP_WORKER_LEASE_SECONDS` | `300` | 账号任务 claim 的租约时长（秒），worker 需在过期前 heartbeat |
+| `APP_WORKER_API_TOKEN` | 空 | 内部 worker API Bearer Token；为空时不挂载远端 worker API |
+| `GITHUB_TOKEN` / `APP_GITHUB_TOKEN` | 空 | 服务器唤醒 Actions 使用的 GitHub Token；Actions 模式必填 |
+| `APP_GITHUB_OWNER` | `zhaoyuqiqi` | crawler workflow 所在仓库 owner |
+| `APP_GITHUB_REPO` | `tiktok-downloader` | crawler workflow 所在仓库名 |
+| `APP_GITHUB_WORKFLOW_ID` | `crawler-worker.yml` | workflow 文件名或 workflow ID |
+| `APP_GITHUB_WORKFLOW_REF` | `main` | workflow_dispatch 使用的 Git ref |
 | `APP_PROXY_URL` | 空 | 抓取时透传给 `yt-dlp --proxy` |
 | `APP_DEBUG` | `0` | `1/true/on` 时开启结构化阶段日志；默认关闭 |
 | `APP_DATA_DIR` | `./data` | 持久化目录，SQLite 位于 `state.db` |
@@ -105,13 +113,13 @@ COS_REGION=...
 | `APP_ACCOUNT_SOURCE_AUTH_BEARER` | 空 | 外部名单 Bearer Token |
 | `APP_INSTAR_WEBHOOK_URL` | 空 | 账号抓取完成回调地址（可选，不配置则跳过账号级完成回调） |
 | `APP_INSTAR_WEBHOOK_AUTH_BEARER` | 空 | 账号完成回调 Bearer Token |
-| `APP_INSTAR_POST_WEBHOOK_URL` | 空 | **必填**：帖子抓取成功后逐条同步回调地址（缺失则服务启动报错） |
+| `APP_INSTAR_POST_WEBHOOK_URL` | 空 | local 模式必填；Actions 模式由 workflow secret 注入 |
 | `APP_INSTAR_POST_WEBHOOK_AUTH_BEARER` | 空 | 帖子逐条回调 Bearer Token |
 | `APP_INSTAR_STAR_SYNC_URL` | 空 | 明星资料同步地址（可选）；为空时会尝试由 `APP_INSTAR_POST_WEBHOOK_URL` 自动推导为同域 `/star/api/sync` |
 | `APP_INSTAR_STAR_SYNC_AUTH_BEARER` | 空 | 明星资料同步 / 存在性查询共用 Bearer Token |
 | `APP_INSTAR_STAR_EXISTS_URL` | 空 | 明星存在性查询地址（可选）；为空时且 `APP_INSTAR_STAR_SYNC_URL` 以 `/sync` 结尾时，自动推导为同路径 `/crawler/exists` |
-| `COS_BUCKET` | 空 | COS bucket（必填；缺失会导致服务启动报错） |
-| `COS_REGION` | 空 | COS region（必填；缺失会导致服务启动报错） |
+| `COS_BUCKET` | 空 | local 模式必填；Actions 模式由 workflow secret 注入 |
+| `COS_REGION` | 空 | local 模式必填；Actions 模式由 workflow secret 注入 |
 | `COS_KEY_PREFIX` | `tiktok-download` | COS key 前缀 |
 
 > 帖子级回调说明：同步 payload 严格遵循 `crawler-ins` 的 `Post` 契约（`insPostId/starName/fullName/title/isTop/insStarId/publishTime/resources`），且**不再传 `cosKey`**；上传到 COS 后，会将 COS 资源地址写入 `resources[].url`。
@@ -132,7 +140,7 @@ APP_DEBUG=1 bun run src/index.ts
 
 ### `POST /fetch`
 
-主动触发账号抓取（旁路入队，复用同一调度流水线）。
+主动触发账号抓取。请求会持久化为账号任务，再由 worker 通过统一 claim 协议领取；不会在 HTTP 请求内直接执行抓取。
 
 请求体（`accountId` 与 `starId` 二选一，若同时存在优先 `accountId`）：
 
@@ -209,6 +217,64 @@ curl -X POST http://127.0.0.1:3000/accounts/clear-fetched \
 - 账号总数 / active / inactive / due
 - 账号列表（含 `nextRunAt`）
 - 去重表累计抓取记录数
+
+### 内部 worker API
+
+配置 `APP_WORKER_API_TOKEN` 后挂载以下接口，均要求请求头
+`Authorization: Bearer <APP_WORKER_API_TOKEN>`：
+
+| 接口 | 用途 |
+|---|---|
+| `POST /internal/workers/register` | 注册 `local` 或 `github-action` worker |
+| `POST /internal/workers/claim` | 原子领取一个 `PENDING` 账号任务并建立租约 |
+| `POST /internal/workers/heartbeat` | 通过 `taskId/workerId/leaseToken` 续租 |
+| `POST /internal/workers/post-exists` | 查询帖子是否已经成功提交 |
+| `POST /internal/workers/post-result` | 幂等提交单条帖子结果并推进本地去重状态 |
+| `POST /internal/workers/account-result` | 提交账号 `success/partial/failed` 汇总结果 |
+| `POST /internal/workers/unregister` | 将 worker 标记为离线 |
+
+账号任务、worker 注册、租约和帖子提交记录均保存在 `APP_DATA_DIR/state.db`。
+同一账号存在待处理、运行中或可重试任务时不会重复创建。租约过期后任务会恢复为
+`PENDING`，失败任务按 3、15、30 分钟退避，最多重试 3 次。
+
+### 仅使用 GitHub Actions
+
+服务器只负责调度、任务状态和 worker API 时，配置：
+
+```bash
+APP_WORKER_MODE=github-actions
+APP_WORKER_API_TOKEN=<strong-random-token>
+APP_GLOBAL_CONCURRENCY=1
+GITHUB_TOKEN=<github-token-with-actions-write-permission>
+```
+
+`github-actions` 模式不会创建或唤醒本地 worker，也不会要求服务器配置 COS、yt-dlp
+或 Instar 同步地址；Docker 容器也会跳过 yt-dlp bootstrap 和更新 cron。
+`APP_WORKER_API_TOKEN` 和 GitHub Token 在此模式下为必填，缺失时服务拒绝启动。
+服务器必须通过 HTTPS 公开
+`/internal/workers/*`，供 GitHub-hosted runner 访问。
+
+调度器通过
+[`wakeGithubActionsWorkflow`](src/workers/githubActionsWakeService.ts)
+唤醒 workflow。函数会先查询最近的 workflow runs；存在 `queued`、`in_progress`
+等活跃 run 时不重复触发，否则调用 GitHub `workflow_dispatch`。`GITHUB_TOKEN` 可以使用
+具有仓库 Actions 读写权限的 GitHub App installation token 或 fine-grained PAT。
+
+仓库中的 `.github/workflows/crawler-worker.yml` 需要配置以下 GitHub Actions Secrets：
+
+| Secret | 用途 |
+|---|---|
+| `WORKER_API_BASE_URL` | 服务器公网 HTTPS 根地址，不包含 `/internal/workers` |
+| `WORKER_API_TOKEN` | 与服务器 `APP_WORKER_API_TOKEN` 相同 |
+| `INSTAR_STAR_SYNC_URL` / `INSTAR_STAR_SYNC_TOKEN` | 明星资料同步地址和 Bearer Token |
+| `INSTAR_POST_SYNC_URL` / `INSTAR_POST_SYNC_TOKEN` | 帖子同步地址和 Bearer Token |
+| `INSTAR_ACCOUNT_WEBHOOK_URL` / `INSTAR_ACCOUNT_WEBHOOK_TOKEN` | 可选的账号完成回调 |
+| `COS_BUCKET` / `COS_REGION` | Actions worker 上传媒体使用的 COS 配置 |
+| `TIKTOK_COOKIES` | 可选，Netscape 格式 cookies 文件内容 |
+
+Actions worker 每次只 claim 一个账号任务，每 30 秒 heartbeat，单次续租 3 分钟；处理完
+任务后继续 claim，连续 3 次空领后退出。同步和结果回写均在
+`src/crawler/github-actions.ts` 内完成，执行过程不会使用 `APP_PROXY_URL`。
 
 ## instar 对接契约
 

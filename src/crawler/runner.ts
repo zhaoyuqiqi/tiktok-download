@@ -55,6 +55,7 @@ export class Runner {
     });
 
     const data: PostListItem[] = [];
+    let stoppedAtFetchedPost = false;
     try {
       for await (const line of rl) {
         if (!line.trim()) {
@@ -75,6 +76,7 @@ export class Runner {
         }
         const fetchedPost = await isExists(postId);
         if (fetchedPost) {
+          stoppedAtFetchedPost = true;
           child.kill("SIGTERM");
           break;
         }
@@ -86,7 +88,11 @@ export class Runner {
       if (child.exitCode === null) {
         child.kill("SIGKILL");
       }
-      if (typeof closeResult === "number" && closeResult !== 0) {
+      if (
+        typeof closeResult === "number" &&
+        closeResult !== 0 &&
+        !stoppedAtFetchedPost
+      ) {
         const stderr = Buffer.concat(stderrChunks).toString("utf8");
         throw new Error(
           stderr || `yt-dlp 列表抓取失败，退出码: ${closeResult}`,

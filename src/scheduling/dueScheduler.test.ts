@@ -1,175 +1,168 @@
 import { describe, expect, it } from "bun:test";
-import { DueScheduler } from "./dueScheduler.ts";
+import { DueScheduler, type DueSchedulerDeps } from "./dueScheduler.ts";
+
+function createDeps(
+  overrides: Partial<DueSchedulerDeps> = {},
+): DueSchedulerDeps {
+  return {
+    discoveryLimit: 100,
+    async listDueAccounts() {
+      return [];
+    },
+    async enqueueAccountTask() {
+      return { created: true };
+    },
+    recoverTasks() {
+      return 0;
+    },
+    countClaimableTasks() {
+      return 0;
+    },
+    countRunningTasks() {
+      return 0;
+    },
+    wakeWorkers() {},
+    now: () => new Date("2026-07-25T10:00:00.000Z"),
+    ...overrides,
+  };
+}
 
 describe("DueScheduler", () => {
-  it("tick 仅按并发剩余额度拉取 due 账号", async () => {
-    const started: string[] = [];
-
-    const scheduler = new DueScheduler({
-      concurrency: 2,
-      async listDueAccounts(limit) {
-        expect(limit).toBe(2);
-        return [
-          { platform: "tiktok", accountId: "a" },
-          { platform: "tiktok", accountId: "b" },
-          { platform: "tiktok", accountId: "c" },
-        ].slice(0, limit);
-      },
-      async runAccount(accountId) {
-        started.push(accountId);
-      },
-    });
-
-    await scheduler.tick();
-    await Bun.sleep(0);
-
-    expect(started.sort()).toEqual(["a", "b"]);
-  });
-
-  it("外部 trigger 与 due tick 共用同一 runAccount 流水线", async () => {
-    const calls: Array<{
+  it("tick 将 due 账号创建为持久化任务后唤醒 worker", async () => {
+    const enqueued: Array<{
       accountId: string;
-      source: "due" | "manual";
-      limit?: number;
-      categoryId?: number;
+      source: string;
+      nowIso: string;
     }> = [];
-    let releaseManual!: () => void;
-    const manualBlocker = new Promise<void>((resolve) => {
-      releaseManual = resolve;
-    });
+    let wakeCount = 0;
+    const scheduler = new DueScheduler(
+      createDeps({
+        discoveryLimit: 20,
+        async listDueAccounts(limit, nowIso) {
+          expect(limit).toBe(20);
+          expect(nowIso).toBe("2026-07-25T10:00:00.000Z");
+          return [
+            { platform: "tiktok", accountId: "a" },
+            { platform: "tiktok", accountId: "b" },
+          ];
+        },
+        async enqueueAccountTask(accountId, source, _options, nowIso) {
+          enqueued.push({ accountId, source, nowIso });
+          return { created: true };
+        },
+        countClaimableTasks() {
+          return 2;
+        },
+        wakeWorkers() {
+          wakeCount += 1;
+        },
+      }),
+    );
 
-    const scheduler = new DueScheduler({
-      concurrency: 2,
-      async listDueAccounts(limit) {
-        expect(limit).toBe(1);
-        return [{ platform: "tiktok", accountId: "due-account" }];
-      },
-      async runAccount(accountId, source, options) {
-        calls.push({ accountId, source, limit: options?.limit, categoryId: options?.categoryId });
-        if (source === "manual") {
-          await manualBlocker;
-        }
-      },
-    });
-
-    await scheduler.trigger("manual-account", { limit: 3, categoryId: 7 });
-    await Bun.sleep(0);
     await scheduler.tick();
-    await Bun.sleep(0);
-    releaseManual();
-    await Bun.sleep(0);
 
-    expect(calls).toEqual([
-      { accountId: "manual-account", source: "manual", limit: 3, categoryId: 7 },
-      { accountId: "due-account", source: "due", limit: undefined, categoryId: undefined },
+    expect(enqueued).toEqual([
+      { accountId: "a", source: "due", nowIso: "2026-07-25T10:00:00.000Z" },
+      { accountId: "b", source: "due", nowIso: "2026-07-25T10:00:00.000Z" },
     ]);
+    expect(wakeCount).toBe(1);
   });
 
-  it("同账号并发触发时只运行一次", async () => {
-    let runCount = 0;
-    let release!: () => void;
-    const blocker = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+  it("没有可领取任务时不唤醒 worker", async () => {
+    let wakeCount = 0;
+    const scheduler = new DueScheduler(
+      createDeps({
+        async listDueAccounts() {
+          return [{ platform: "tiktok", accountId: "a" }];
+        },
+        async enqueueAccountTask() {
+          return { created: false };
+        },
+        wakeWorkers() {
+          wakeCount += 1;
+        },
+      }),
+    );
 
-    const scheduler = new DueScheduler({
-      concurrency: 2,
-      async listDueAccounts() {
-        return [];
-      },
-      async runAccount() {
-        runCount += 1;
-        await blocker;
-      },
-    });
-
-    await scheduler.trigger("same-account");
-    await scheduler.trigger("same-account");
-    await Bun.sleep(0);
-
-    expect(runCount).toBe(1);
-    release();
-    await Bun.sleep(0);
+    await scheduler.tick();
+    expect(wakeCount).toBe(0);
   });
 
-  it("manual 触发遵守全局并发上限，超额触发进入队列", async () => {
-    const calls: Array<{ accountId: string; limit?: number }> = [];
-    let releaseFirst!: () => void;
-    const firstBlocker = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+  it("tick 会恢复到期租约并唤醒已有任务", async () => {
+    let recoveredAt = "";
+    let wakeCount = 0;
+    const scheduler = new DueScheduler(
+      createDeps({
+        recoverTasks(nowIso) {
+          recoveredAt = nowIso;
+          return 1;
+        },
+        countClaimableTasks() {
+          return 1;
+        },
+        wakeWorkers() {
+          wakeCount += 1;
+        },
+      }),
+    );
 
-    const scheduler = new DueScheduler({
-      concurrency: 1,
-      async listDueAccounts() {
-        return [];
-      },
-      async runAccount(accountId, _source, options) {
-        calls.push({ accountId, limit: options?.limit });
-        if (accountId === "a") {
-          await firstBlocker;
-        }
-      },
-    });
-
-    await scheduler.trigger("a", { limit: 3 });
-    await scheduler.trigger("b", { limit: 2 });
-    await Bun.sleep(0);
-
-    expect(calls).toEqual([{ accountId: "a", limit: 3 }]);
-
-    releaseFirst();
-    await Bun.sleep(0);
-    await Bun.sleep(0);
-
-    expect(calls).toEqual([
-      { accountId: "a", limit: 3 },
-      { accountId: "b", limit: 2 },
-    ]);
+    await scheduler.tick();
+    expect(recoveredAt).toBe("2026-07-25T10:00:00.000Z");
+    expect(wakeCount).toBe(1);
   });
 
-  it("失败后按退避重试，且退避期间不占并发", async () => {
-    const scheduled: Array<{ delay: number; callback: () => void }> = [];
-    const calls: string[] = [];
-    let unstableAttempts = 0;
+  it("manual trigger 持久化全部参数并立即唤醒", async () => {
+    let received: unknown;
+    let wakeCount = 0;
+    const scheduler = new DueScheduler(
+      createDeps({
+        async enqueueAccountTask(accountId, source, options, nowIso) {
+          received = { accountId, source, options, nowIso };
+          return { created: true };
+        },
+        wakeWorkers() {
+          wakeCount += 1;
+        },
+      }),
+    );
 
-    const scheduler = new DueScheduler({
-      concurrency: 1,
-      maxAttempts: 3,
-      backoffMs: [60_000, 180_000, 600_000],
-      setTimer(callback, delay) {
-        scheduled.push({ delay, callback });
-        return delay as unknown as ReturnType<typeof setTimeout>;
-      },
-      clearTimer() {},
-      async listDueAccounts() {
-        return [];
-      },
-      async runAccount(accountId, _source, options) {
-        calls.push(`${accountId}:${options?.limit ?? "none"}`);
-        if (accountId === "unstable") {
-          unstableAttempts += 1;
-          if (unstableAttempts === 1) {
-            throw new Error("boom");
-          }
-        }
-      },
+    await scheduler.trigger("manual-account", {
+      limit: 3,
+      categoryId: 7,
+      zhName: "测试",
     });
 
-    await scheduler.trigger("unstable", { limit: 3 });
-    await Bun.sleep(0);
+    expect(received).toEqual({
+      accountId: "manual-account",
+      source: "manual",
+      options: { limit: 3, categoryId: 7, zhName: "测试" },
+      nowIso: "2026-07-25T10:00:00.000Z",
+    });
+    expect(wakeCount).toBe(1);
+  });
 
-    expect(scheduled).toHaveLength(1);
-    expect(scheduled[0]?.delay).toBe(60_000);
+  it("runningCount 来自持久化任务统计", () => {
+    const scheduler = new DueScheduler(
+      createDeps({ countRunningTasks: () => 2 }),
+    );
+    expect(scheduler.runningCount).toBe(2);
+  });
 
-    await scheduler.trigger("stable", { limit: 1 });
-    await Bun.sleep(0);
+  it("worker 唤醒失败时保留已入队任务且 trigger 不抛错", async () => {
+    let enqueueCount = 0;
+    const scheduler = new DueScheduler(
+      createDeps({
+        async enqueueAccountTask() {
+          enqueueCount += 1;
+          return { created: true };
+        },
+        wakeWorkers() {
+          throw new Error("dispatch unavailable");
+        },
+      }),
+    );
 
-    expect(calls).toEqual(["unstable:3", "stable:1"]);
-
-    scheduled[0]?.callback();
-    await Bun.sleep(0);
-
-    expect(calls).toEqual(["unstable:3", "stable:1", "unstable:3"]);
+    await expect(scheduler.trigger("alice")).resolves.toBeUndefined();
+    expect(enqueueCount).toBe(1);
   });
 });

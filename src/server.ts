@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import type { DueScheduler } from "./scheduling/dueScheduler.ts";
 import type { StateRepository } from "./storage/repository.ts";
+import { createWorkerApi, type WorkerApiOptions } from "./workers/api.ts";
 
 export interface ServiceStatus {
   scheduler: {
@@ -28,6 +29,7 @@ export interface CreateAppOptions {
   > &
     Partial<Pick<StateRepository, "clearFetchedPostsForAccount" | "resetAccountCursor">>;
   now?: () => Date;
+  workerApi?: WorkerApiOptions;
 }
 
 function buildDefaultStatus(now: Date): ServiceStatus {
@@ -110,7 +112,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const platform = options.platform ?? "tiktok";
   const now = options.now ?? (() => new Date());
 
-  return new Elysia()
+  const app = new Elysia()
     .get("/health", () => ({
       status: "ok",
       service: "tiktok-downloader",
@@ -220,4 +222,9 @@ export function createApp(options: CreateAppOptions = {}) {
         updatedAt: current.toISOString(),
       } as ServiceStatus;
     });
+
+  if (options.workerApi !== undefined) {
+    app.use(createWorkerApi(options.workerApi));
+  }
+  return app;
 }

@@ -4,20 +4,27 @@ export interface CosConfig {
   keyPrefix: string;
 }
 
+export type WorkerMode = "local" | "github-actions";
+
 export interface ServiceConfig {
   fetchIntervalSeconds: number;
   accountReconcileIntervalSeconds: number;
   globalConcurrency: number;
+  workerMode: WorkerMode;
+  workerLeaseSeconds: number;
+  workerApiToken?: string;
   proxy?: string;
   dataDir: string;
   cos: CosConfig;
-  cookiePath?: string
+  cookiePath?: string;
 }
 
 const DEFAULTS = {
   fetchIntervalSeconds: 300,
   accountReconcileIntervalSeconds: 300,
   globalConcurrency: 2,
+  workerMode: "local" as WorkerMode,
+  workerLeaseSeconds: 300,
   dataDir: "./data",
   cosKeyPrefix: "tiktok-download",
 } as const;
@@ -48,6 +55,16 @@ function str(_name: string, raw: string | undefined, fallback = ""): string {
   return value;
 }
 
+function workerMode(raw: string | undefined): WorkerMode {
+  const value = str("APP_WORKER_MODE", raw, DEFAULTS.workerMode);
+  if (value !== "local" && value !== "github-actions") {
+    throw new Error(
+      `APP_WORKER_MODE 必须是 local 或 github-actions，收到: ${value}`,
+    );
+  }
+  return value;
+}
+
 export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
   return {
     fetchIntervalSeconds: positiveInt(
@@ -65,6 +82,13 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
       env.APP_GLOBAL_CONCURRENCY,
       DEFAULTS.globalConcurrency,
     ),
+    workerMode: workerMode(env.APP_WORKER_MODE),
+    workerLeaseSeconds: positiveInt(
+      "APP_WORKER_LEASE_SECONDS",
+      env.APP_WORKER_LEASE_SECONDS,
+      DEFAULTS.workerLeaseSeconds,
+    ),
+    workerApiToken: str("APP_WORKER_API_TOKEN", env.APP_WORKER_API_TOKEN) || undefined,
     proxy: str("APP_PROXY_URL", env.APP_PROXY_URL) || undefined,
     dataDir: str("APP_DATA_DIR", env.APP_DATA_DIR, DEFAULTS.dataDir),
     cos: {
