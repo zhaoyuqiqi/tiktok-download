@@ -52,6 +52,7 @@ jobs:
         env:
           APP_WORKER_API_BASE_URL: ${{ secrets.WORKER_API_BASE_URL }}
           APP_WORKER_API_TOKEN: ${{ secrets.WORKER_API_TOKEN }}
+          APP_WORKER_NO_SUCCESS_TIMEOUT_MS: ${{ vars.WORKER_NO_SUCCESS_TIMEOUT_MS }}
           APP_INSTAR_STAR_SYNC_URL: ${{ secrets.INSTAR_STAR_SYNC_URL }}
           APP_INSTAR_STAR_SYNC_AUTH_BEARER: ${{ secrets.INSTAR_STAR_SYNC_TOKEN }}
           APP_INSTAR_POST_WEBHOOK_URL: ${{ secrets.INSTAR_POST_SYNC_URL }}

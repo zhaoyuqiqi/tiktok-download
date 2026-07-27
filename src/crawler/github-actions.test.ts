@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import type {
   InstarPostSyncClient,
   InstarServerClient,
@@ -7,11 +7,18 @@ import type {
 import type { ClaimedAccountTask } from "../workers/protocol.ts";
 import { GithubActionWorker } from "./github-actions.ts";
 import type { InstarPost } from "./types/instar";
+import type { WorkerLogLevel } from "./worker.ts";
 
 interface RecordedRequest {
   path: string;
   body: Record<string, unknown>;
   authorization: string | null;
+}
+
+interface RecordedLog {
+  level: WorkerLogLevel;
+  event: string;
+  fields: Record<string, unknown>;
 }
 
 function claimedTask(): ClaimedAccountTask {
@@ -44,12 +51,151 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+class TestGithubActionWorker extends GithubActionWorker {
+  startTask(task: ClaimedAccountTask): Promise<void> {
+    return this.onTaskStart(task);
+  }
+
+  endTask(task: ClaimedAccountTask): Promise<void> {
+    return this.onTaskEnd(task);
+  }
+}
+
 describe("GithubActionWorker", () => {
+  it("领取任务后连续超时无帖子成功时停止 worker 和 heartbeat", async () => {
+    const exitCodes: number[] = [];
+    const logs: RecordedLog[] = [];
+    let heartbeatCount = 0;
+    const task = claimedTask();
+    const worker = new TestGithubActionWorker({
+      apiBaseUrl: "https://service.example.com",
+      apiToken: "worker-secret",
+      workerId: "action-1",
+      heartbeatIntervalMs: 1,
+      noSuccessTimeoutMs: 30,
+      terminateWorker(exitCode) {
+        exitCodes.push(exitCode);
+      },
+      logger(level, event, fields = {}) {
+        logs.push({ level, event, fields });
+      },
+      starSyncClient: { async syncStarProfile() {} },
+      postSyncClient: { async notifyPostSynced() {} },
+      async fetchImpl(input) {
+        if (new URL(String(input)).pathname.endsWith("/heartbeat")) {
+          heartbeatCount += 1;
+        }
+        return jsonResponse({ ok: true });
+      },
+    });
+
+    await worker.startTask(task);
+    await Bun.sleep(60);
+    const countAfterTimeout = heartbeatCount;
+    await Bun.sleep(10);
+    await worker.endTask(task);
+
+    expect(exitCodes).toEqual([1]);
+    expect(heartbeatCount).toBe(countAfterTimeout);
+    expect(logs).toContainEqual({
+      level: "error",
+      event: "account.task.no_success_timeout",
+      fields: expect.objectContaining({
+        taskId: "task-1",
+        accountId: "alice",
+        timeoutMs: 30,
+      }),
+    });
+  });
+
+  it("帖子同步并成功上报后重置无成功超时", async () => {
+    const exitCodes: number[] = [];
+    const task = claimedTask();
+    const worker = new TestGithubActionWorker({
+      apiBaseUrl: "https://service.example.com",
+      apiToken: "worker-secret",
+      workerId: "action-1",
+      noSuccessTimeoutMs: 100,
+      terminateWorker(exitCode) {
+        exitCodes.push(exitCode);
+      },
+      starSyncClient: { async syncStarProfile() {} },
+      postSyncClient: { async notifyPostSynced() {} },
+      logger() {},
+      async fetchImpl() {
+        return jsonResponse({ ok: true });
+      },
+    });
+
+    await worker.startTask(task);
+    await Bun.sleep(60);
+    await worker.syncPostDetail({
+      insPostId: "post-1",
+      starName: "alice",
+      fullName: "Alice",
+      title: "first",
+      isTop: false,
+      insStarId: "star-1",
+      publishTime: 1_785_144_400,
+      resources: [],
+    });
+    await Bun.sleep(60);
+    expect(exitCodes).toEqual([]);
+    await worker.endTask(task);
+  });
+
+  it("默认将结构化阶段日志写入 GitHub Actions 控制台", async () => {
+    const messages: string[] = [];
+    const info = spyOn(console, "info").mockImplementation((message) => {
+      messages.push(String(message));
+    });
+
+    try {
+      const worker = new GithubActionWorker({
+        apiBaseUrl: "https://service.example.com",
+        apiToken: "worker-secret",
+        workerId: "action-log-test",
+        starSyncClient: { async syncStarProfile() {} },
+        postSyncClient: { async notifyPostSynced() {} },
+        maxEmptyClaims: 1,
+        async fetchImpl(input) {
+          const path = new URL(String(input)).pathname;
+          return jsonResponse(path.endsWith("/claim") ? { task: null } : { ok: true });
+        },
+      });
+
+      await worker.autoSetup();
+    } finally {
+      info.mockRestore();
+    }
+
+    const records = messages.map((message) => JSON.parse(message) as Record<string, unknown>);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "info",
+          scope: "github-actions-worker",
+          event: "worker.register.start",
+          workerId: "action-log-test",
+        }),
+        expect.objectContaining({
+          event: "task.claim.empty",
+          workerId: "action-log-test",
+        }),
+        expect.objectContaining({
+          event: "worker.unregister.done",
+          workerId: "action-log-test",
+        }),
+      ]),
+    );
+  });
+
   it("完成注册、claim、心跳、同步、结果提交和注销闭环", async () => {
     const requests: RecordedRequest[] = [];
     const profiles: unknown[] = [];
     const posts: unknown[] = [];
     const accountCallbacks: unknown[] = [];
+    const logs: RecordedLog[] = [];
     let claimCount = 0;
     let heartbeatCount = 0;
     let worker!: GithubActionWorker;
@@ -117,6 +263,9 @@ describe("GithubActionWorker", () => {
       accountClient,
       heartbeatIntervalMs: 1,
       maxEmptyClaims: 1,
+      logger(level, event, fields = {}) {
+        logs.push({ level, event, fields });
+      },
       executeTask: async (task) => {
         expect(task.options).toEqual({
           limit: 3,
@@ -167,10 +316,34 @@ describe("GithubActionWorker", () => {
         (request) => request.authorization === "Bearer worker-secret",
       ),
     ).toBeTrue();
+    expect(logs.map((entry) => entry.event)).toEqual(
+      expect.arrayContaining([
+        "worker.register.start",
+        "worker.register.done",
+        "task.claim.done",
+        "account.task.start",
+        "instar.profile.sync.start",
+        "instar.profile.sync.done",
+        "instar.post.sync.start",
+        "instar.post.sync.done",
+        "account.result.submit.done",
+        "account.task.end",
+        "worker.unregister.done",
+      ]),
+    );
+    const postSyncLog = logs.find(
+      (entry) => entry.event === "instar.post.sync.done",
+    );
+    expect(postSyncLog?.fields).toMatchObject({
+      taskId: "task-1",
+      accountId: "alice",
+      postId: "post-1",
+    });
   });
 
   it("账号执行异常时提交 failed 后继续空领并退出", async () => {
     const accountResults: Array<Record<string, unknown>> = [];
+    const logs: RecordedLog[] = [];
     let claimCount = 0;
     const worker = new GithubActionWorker({
       apiBaseUrl: "https://service.example.com",
@@ -179,6 +352,9 @@ describe("GithubActionWorker", () => {
       starSyncClient: { async syncStarProfile() {} },
       postSyncClient: { async notifyPostSynced() {} },
       maxEmptyClaims: 1,
+      logger(level, event, fields = {}) {
+        logs.push({ level, event, fields });
+      },
       executeTask: async () => {
         throw new Error("profile failed");
       },
@@ -204,5 +380,14 @@ describe("GithubActionWorker", () => {
     expect(accountResults).toHaveLength(1);
     expect(accountResults[0]?.status).toBe("failed");
     expect(accountResults[0]?.error).toBe("profile failed");
+    expect(logs).toContainEqual({
+      level: "error",
+      event: "account.task.failed",
+      fields: expect.objectContaining({
+        taskId: "task-1",
+        accountId: "alice",
+        error: "profile failed",
+      }),
+    });
   });
 });

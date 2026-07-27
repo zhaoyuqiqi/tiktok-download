@@ -273,7 +273,10 @@ GITHUB_TOKEN=<github-token-with-actions-write-permission>
 | `TIKTOK_COOKIES` | 可选，Netscape 格式 cookies 文件内容 |
 
 Actions worker 每次只 claim 一个账号任务，每 30 秒 heartbeat，单次续租 3 分钟；处理完
-任务后继续 claim，连续 3 次空领后退出。同步和结果回写均在
+任务后继续 claim，连续 3 次空领后退出。领取任务后如果连续 30 分钟没有任何帖子完成
+Instar 同步和成功结果回写，worker 会停止 heartbeat 并以失败状态退出；可通过
+GitHub Actions Variable `WORKER_NO_SUCCESS_TIMEOUT_MS` 覆盖该超时时间（毫秒）。
+同步和结果回写均在
 `src/crawler/github-actions.ts` 内完成，执行过程不会使用 `APP_PROXY_URL`。
 
 ## instar 对接契约

@@ -12,6 +12,7 @@ import {
   BaseWorker,
   type AccountExecutionSummary,
   type BaseWorkerOptions,
+  type WorkerLogger,
 } from "./worker";
 import type { InstarPost } from "./types/instar";
 import type { InstarStarSyncPayload } from "./types/yt-dlp";
@@ -29,6 +30,32 @@ interface ClaimResponse {
   task: ClaimedAccountTask | null;
 }
 
+const DEFAULT_NO_SUCCESS_TIMEOUT_MS = 30 * 60 * 1000;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function createGithubActionsLogger(workerId: string): WorkerLogger {
+  return (level, event, fields = {}) => {
+    const message = JSON.stringify({
+      ts: new Date().toISOString(),
+      level,
+      scope: "github-actions-worker",
+      event,
+      workerId,
+      ...fields,
+    });
+    if (level === "error") {
+      console.error(message);
+    } else if (level === "warn") {
+      console.warn(message);
+    } else {
+      console.info(message);
+    }
+  };
+}
+
 export class WorkerApiError extends Error {
   constructor(
     readonly status: number,
@@ -44,16 +71,15 @@ export interface GithubActionWorkerOptions extends BaseWorkerOptions {
   apiToken: string;
   workerId: string;
   heartbeatIntervalMs?: number;
+  noSuccessTimeoutMs?: number;
+  terminateWorker?: (exitCode: number) => void;
   fetchImpl?: FetchLike;
   starSyncClient: InstarStarSyncClient;
   postSyncClient: InstarPostSyncClient;
   accountClient?: InstarServerClient;
 }
 
-function requiredEnv(
-  env: NodeJS.ProcessEnv,
-  ...names: string[]
-): string {
+function requiredEnv(env: NodeJS.ProcessEnv, ...names: string[]): string {
   for (const name of names) {
     const value = env[name]?.trim();
     if (value) {
@@ -119,21 +145,32 @@ export class GithubActionWorker extends BaseWorker {
   private readonly apiToken: string;
   private readonly workerId: string;
   private readonly heartbeatIntervalMs: number;
+  private readonly noSuccessTimeoutMs: number;
+  private readonly terminateWorker: (exitCode: number) => void;
   private readonly fetchImpl: FetchLike;
   private readonly starSyncClient: InstarStarSyncClient;
   private readonly postSyncClient: InstarPostSyncClient;
   private readonly accountClient?: InstarServerClient;
   private currentTask: ClaimedAccountTask | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private noSuccessTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatInFlight = false;
   private leaseLost = false;
 
   constructor(options: GithubActionWorkerOptions) {
-    super(options);
+    const workerId = options.workerId.trim();
+    super({
+      ...options,
+      logger: options.logger ?? createGithubActionsLogger(workerId),
+    });
     this.apiBaseUrl = options.apiBaseUrl.replace(/\/+$/g, "");
     this.apiToken = options.apiToken.trim();
-    this.workerId = options.workerId.trim();
+    this.workerId = workerId;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 30_000;
+    this.noSuccessTimeoutMs =
+      options.noSuccessTimeoutMs ?? DEFAULT_NO_SUCCESS_TIMEOUT_MS;
+    this.terminateWorker =
+      options.terminateWorker ?? ((exitCode) => process.exit(exitCode));
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.starSyncClient = options.starSyncClient;
     this.postSyncClient = options.postSyncClient;
@@ -145,28 +182,52 @@ export class GithubActionWorker extends BaseWorker {
     if (this.heartbeatIntervalMs <= 0) {
       throw new Error("heartbeatIntervalMs 必须为正数");
     }
+    if (this.noSuccessTimeoutMs <= 0) {
+      throw new Error("noSuccessTimeoutMs 必须为正数");
+    }
   }
 
   protected override async onWorkerStart(): Promise<void> {
+    this.log("info", "worker.register.start");
     await this.workerRequest("/register", {
       workerId: this.workerId,
       workerType: "github-action",
     });
+    this.log("info", "worker.register.done");
   }
 
   protected override async onWorkerEnd(): Promise<void> {
     this.stopHeartbeat();
+    this.stopNoSuccessWatchdog();
+    this.log("info", "worker.unregister.start");
     try {
       await this.workerRequest("/unregister", { workerId: this.workerId });
+      this.log("info", "worker.unregister.done");
     } catch (error) {
-      console.warn("github-action worker 注销失败", error);
+      this.log("warn", "worker.unregister.failed", {
+        error: errorMessage(error),
+      });
     }
   }
 
   protected override async claimTasks(): Promise<ClaimedAccountTask | null> {
+    this.log("info", "task.claim.start");
     const response = await this.workerRequest<ClaimResponse>("/claim", {
       workerId: this.workerId,
     });
+    this.log(
+      "info",
+      response.task === null ? "task.claim.empty" : "task.claim.done",
+      {
+        ...(response.task === null
+          ? {}
+          : {
+              taskId: response.task.id,
+              accountId: response.task.accountId,
+              source: response.task.source,
+            }),
+      },
+    );
     return response.task;
   }
 
@@ -176,6 +237,11 @@ export class GithubActionWorker extends BaseWorker {
     this.currentTask = task;
     this.leaseLost = false;
     this.startHeartbeat();
+    this.startNoSuccessWatchdog(task);
+    this.log("info", "account.task.start", {
+      retryCount: task.retryCount,
+      maxRetries: task.maxRetries,
+    });
   }
 
   protected override async onTaskSuccess(
@@ -183,10 +249,18 @@ export class GithubActionWorker extends BaseWorker {
     summary: AccountExecutionSummary,
   ): Promise<void> {
     this.assertActiveTask(task);
+    this.log("info", "account.result.submit.start", {
+      outcome: summary.outcome,
+      newCount: summary.newCount,
+      failedCount: summary.failedCount,
+    });
     await this.workerRequest("/account-result", {
       ...this.leasePayload(task),
       status: summary.outcome,
       summary,
+    });
+    this.log("info", "account.result.submit.done", {
+      outcome: summary.outcome,
     });
     await this.notifyAccountCompleted(task.accountId, 1);
   }
@@ -196,18 +270,22 @@ export class GithubActionWorker extends BaseWorker {
     error: unknown,
   ): Promise<void> {
     this.assertActiveTask(task);
+    const message = errorMessage(error);
+    this.log("error", "account.task.failed", { error: message });
+    this.log("info", "account.result.submit.start", { outcome: "failed" });
     await this.workerRequest("/account-result", {
       ...this.leasePayload(task),
       status: "failed",
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
     });
+    this.log("info", "account.result.submit.done", { outcome: "failed" });
     await this.notifyAccountCompleted(task.accountId, 0);
   }
 
-  protected override async onTaskEnd(
-    _task: ClaimedAccountTask,
-  ): Promise<void> {
+  protected override async onTaskEnd(task: ClaimedAccountTask): Promise<void> {
     this.stopHeartbeat();
+    this.stopNoSuccessWatchdog();
+    this.log("info", "account.task.end", { taskId: task.id });
     this.currentTask = null;
     this.leaseLost = false;
   }
@@ -225,8 +303,17 @@ export class GithubActionWorker extends BaseWorker {
     payload: InstarStarSyncPayload,
   ): Promise<void> {
     this.assertActiveTask();
+    const startedAt = Date.now();
+    this.log("info", "instar.profile.sync.start", {
+      insStarId: payload.insStarId,
+      starName: payload.starName,
+    });
     await this.starSyncClient.syncStarProfile(payload);
     this.assertActiveTask();
+    this.log("info", "instar.profile.sync.done", {
+      insStarId: payload.insStarId,
+      durationMs: Date.now() - startedAt,
+    });
   }
 
   public override async syncPostDetail(
@@ -234,6 +321,10 @@ export class GithubActionWorker extends BaseWorker {
     publishedAt?: string,
   ): Promise<void> {
     const task = this.assertActiveTask();
+    const startedAt = Date.now();
+    this.log("info", "instar.post.sync.start", {
+      postId: payload.insPostId,
+    });
     await this.postSyncClient.notifyPostSynced(payload);
     this.assertActiveTask(task);
     await this.workerRequest("/post-result", {
@@ -245,6 +336,11 @@ export class GithubActionWorker extends BaseWorker {
       status: "success",
       payload: { ...payload },
     });
+    this.resetNoSuccessWatchdog();
+    this.log("info", "instar.post.sync.done", {
+      postId: payload.insPostId,
+      durationMs: Date.now() - startedAt,
+    });
   }
 
   public override async syncPostFailure(
@@ -252,6 +348,7 @@ export class GithubActionWorker extends BaseWorker {
     error: string,
   ): Promise<void> {
     const task = this.assertActiveTask();
+    this.log("info", "post.failure.submit.start", { postId });
     await this.workerRequest("/post-result", {
       ...this.leasePayload(task),
       platform: task.platform,
@@ -260,21 +357,34 @@ export class GithubActionWorker extends BaseWorker {
       status: "failed",
       payload: { error },
     });
+    this.log("info", "post.failure.submit.done", { postId });
   }
 
   private startHeartbeat(): void {
     this.stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
-      if (this.heartbeatInFlight || this.currentTask === null || this.leaseLost) {
+      if (
+        this.heartbeatInFlight ||
+        this.currentTask === null ||
+        this.leaseLost
+      ) {
         return;
       }
       this.heartbeatInFlight = true;
       void this.sendHeartbeat(this.currentTask)
+        .then(() => {
+          this.log("info", "task.heartbeat续租成功");
+        })
         .catch((error: unknown) => {
           if (error instanceof WorkerApiError && error.status === 409) {
             this.leaseLost = true;
+            this.log("error", "task.heartbeat.lease_lost", {
+              error: error.message,
+            });
           } else {
-            console.warn("github-action worker heartbeat 失败", error);
+            this.log("warn", "task.heartbeat.failed", {
+              error: errorMessage(error),
+            });
           }
         })
         .finally(() => {
@@ -290,13 +400,42 @@ export class GithubActionWorker extends BaseWorker {
     }
   }
 
+  private startNoSuccessWatchdog(task: ClaimedAccountTask): void {
+    this.stopNoSuccessWatchdog();
+    this.noSuccessTimer = setTimeout(() => {
+      if (this.currentTask?.id !== task.id) {
+        return;
+      }
+
+      this.log("error", "account.task.no_success_timeout", {
+        taskId: task.id,
+        accountId: task.accountId,
+        timeoutMs: this.noSuccessTimeoutMs,
+      });
+      this.stopHeartbeat();
+      this.stopNoSuccessWatchdog();
+      this.leaseLost = true;
+      this.terminateWorker(1);
+    }, this.noSuccessTimeoutMs);
+  }
+
+  private resetNoSuccessWatchdog(): void {
+    const task = this.assertActiveTask();
+    this.startNoSuccessWatchdog(task);
+  }
+
+  private stopNoSuccessWatchdog(): void {
+    if (this.noSuccessTimer !== null) {
+      clearTimeout(this.noSuccessTimer);
+      this.noSuccessTimer = null;
+    }
+  }
+
   private async sendHeartbeat(task: ClaimedAccountTask): Promise<void> {
     await this.workerRequest("/heartbeat", this.leasePayload(task));
   }
 
-  private assertActiveTask(
-    expected?: ClaimedAccountTask,
-  ): ClaimedAccountTask {
+  private assertActiveTask(expected?: ClaimedAccountTask): ClaimedAccountTask {
     if (
       this.currentTask === null ||
       this.leaseLost ||
@@ -322,12 +461,22 @@ export class GithubActionWorker extends BaseWorker {
     if (this.accountClient === undefined) {
       return;
     }
+    const startedAt = Date.now();
+    this.log("info", "instar.account.callback.start", { status });
     try {
       await this.accountClient.notifyAccountCompleted(
         toInstarAccountCompletedPayload(accountId, status),
       );
+      this.log("info", "instar.account.callback.done", {
+        status,
+        durationMs: Date.now() - startedAt,
+      });
     } catch (error) {
-      console.warn("github-action worker 账号回调失败", error);
+      this.log("warn", "instar.account.callback.failed", {
+        status,
+        durationMs: Date.now() - startedAt,
+        error: errorMessage(error),
+      });
     }
   }
 
@@ -369,11 +518,7 @@ export function createGithubActionWorkerFromEnv(
     "APP_WORKER_API_BASE_URL",
     "WORKER_API_BASE_URL",
   );
-  const apiToken = requiredEnv(
-    env,
-    "APP_WORKER_API_TOKEN",
-    "WORKER_API_TOKEN",
-  );
+  const apiToken = requiredEnv(env, "APP_WORKER_API_TOKEN", "WORKER_API_TOKEN");
   const postSyncUrl = requiredEnv(env, "APP_INSTAR_POST_WEBHOOK_URL");
   const postSyncBearer = optionalEnv(
     env,
@@ -383,10 +528,7 @@ export function createGithubActionWorkerFromEnv(
     optionalEnv(env, "APP_INSTAR_STAR_SYNC_URL"),
     postSyncUrl,
   );
-  const starSyncBearer = optionalEnv(
-    env,
-    "APP_INSTAR_STAR_SYNC_AUTH_BEARER",
-  );
+  const starSyncBearer = optionalEnv(env, "APP_INSTAR_STAR_SYNC_AUTH_BEARER");
   const accountWebhookUrl = optionalEnv(env, "APP_INSTAR_WEBHOOK_URL");
   const accountWebhookBearer = optionalEnv(
     env,
@@ -403,6 +545,11 @@ export function createGithubActionWorkerFromEnv(
       env,
       "APP_WORKER_HEARTBEAT_INTERVAL_MS",
       30_000,
+    ),
+    noSuccessTimeoutMs: positiveIntEnv(
+      env,
+      "APP_WORKER_NO_SUCCESS_TIMEOUT_MS",
+      DEFAULT_NO_SUCCESS_TIMEOUT_MS,
     ),
     idleWaitMs: positiveIntEnv(env, "APP_WORKER_IDLE_WAIT_MS", 10_000),
     maxEmptyClaims: positiveIntEnv(env, "APP_WORKER_MAX_EMPTY_CLAIMS", 3),

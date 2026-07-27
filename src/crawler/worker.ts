@@ -32,10 +32,18 @@ export interface AccountExecutionSummary extends Record<string, unknown> {
   lastVideoId?: string;
 }
 
+export type WorkerLogLevel = "info" | "warn" | "error";
+export type WorkerLogger = (
+  level: WorkerLogLevel,
+  event: string,
+  fields?: Record<string, unknown>,
+) => void;
+
 export interface BaseWorkerOptions {
   idleWaitMs?: number;
   maxEmptyClaims?: number;
   sleep?: (delayMs: number) => Promise<void>;
+  logger?: WorkerLogger;
   executeTask?: (
     task: ClaimedAccountTask,
   ) => Promise<AccountExecutionSummary>;
@@ -49,12 +57,15 @@ export abstract class BaseWorker {
   private readonly idleWaitMs: number;
   private readonly maxEmptyClaims: number;
   private readonly sleepImpl: (delayMs: number) => Promise<void>;
+  private readonly logger?: WorkerLogger;
   private readonly executeTaskOverride?: BaseWorkerOptions["executeTask"];
+  private taskContext: ClaimedAccountTask | null = null;
 
   protected constructor(options: BaseWorkerOptions = {}) {
     this.idleWaitMs = options.idleWaitMs ?? 10_000;
     this.maxEmptyClaims = options.maxEmptyClaims ?? 3;
     this.sleepImpl = options.sleep ?? sleep;
+    this.logger = options.logger;
     this.executeTaskOverride = options.executeTask;
 
     if (this.idleWaitMs < 0 || this.maxEmptyClaims <= 0) {
@@ -90,12 +101,31 @@ export abstract class BaseWorker {
   protected onPostStart?(_postId: string): Promise<void>;
   protected onPostEnd?(_postId: string): Promise<void>;
 
+  protected log(
+    level: WorkerLogLevel,
+    event: string,
+    fields: Record<string, unknown> = {},
+  ): void {
+    this.logger?.(level, event, {
+      ...(this.taskContext === null
+        ? {}
+        : {
+            taskId: this.taskContext.id,
+            accountId: this.taskContext.accountId,
+            source: this.taskContext.source,
+          }),
+      ...fields,
+    });
+  }
+
   private cookieArgs(): string[] {
     const cookiePath = process.env.COOKIE_PATH?.trim();
     return cookiePath ? ["--cookies", cookiePath] : [];
   }
 
   private async fetchProfile(starName: string) {
+    const startedAt = Date.now();
+    this.log("info", "profile.fetch.start", { accountId: starName });
     const args: string[] = [
       ...this.cookieArgs(),
       "--flat-playlist",
@@ -119,7 +149,13 @@ export abstract class BaseWorker {
     }
 
     try {
-      return JSON.parse(jsonRaw) as RawTikTokProfileFromYtDlp;
+      const profile = JSON.parse(jsonRaw) as RawTikTokProfileFromYtDlp;
+      this.log("info", "profile.fetch.done", {
+        accountId: starName,
+        durationMs: Date.now() - startedAt,
+        insStarId: profile.uploader_id ?? null,
+      });
+      return profile;
     } catch {
       throw new Error("patch-yt-dlp 输出 JSON 解析失败");
     }
@@ -189,6 +225,11 @@ export abstract class BaseWorker {
   }
 
   private async fetchPostList(starName: string, limit?: number) {
+    const startedAt = Date.now();
+    this.log("info", "post.list.fetch.start", {
+      accountId: starName,
+      limit: limit ?? null,
+    });
     const args = [
       ...this.cookieArgs(),
       "--flat-playlist",
@@ -223,10 +264,17 @@ export abstract class BaseWorker {
         ...(entry.title === undefined ? {} : { title: entry.title }),
       });
     }
+    this.log("info", "post.list.fetch.done", {
+      accountId: starName,
+      durationMs: Date.now() - startedAt,
+      postCount: refs.length,
+    });
     return refs;
   }
 
   private async fetchPostDetail(ref: PlatformPostRef) {
+    const startedAt = Date.now();
+    this.log("info", "post.detail.fetch.start", { postId: ref.postId });
     const result = await this.runner.run([
       ...this.cookieArgs(),
       "-J",
@@ -235,7 +283,12 @@ export abstract class BaseWorker {
     if (result.code !== 0) {
       throw new Error(`yt-dlp 详情抓取失败: ${result.stderr || result.stdout}`);
     }
-    return ensureJson<RawDetailJson>(result.stdout, result.stderr);
+    const detail = ensureJson<RawDetailJson>(result.stdout, result.stderr);
+    this.log("info", "post.detail.fetch.done", {
+      postId: ref.postId,
+      durationMs: Date.now() - startedAt,
+    });
+    return detail;
   }
 
   private buildAvatarObjectKey(
@@ -280,8 +333,32 @@ export abstract class BaseWorker {
     await putPromise;
   }
 
+  private async runLoggedUpload(
+    fields: Record<string, unknown>,
+    upload: () => Promise<unknown>,
+  ): Promise<void> {
+    const startedAt = Date.now();
+    this.log("info", "cos.upload.start", fields);
+    try {
+      await upload();
+      this.log("info", "cos.upload.done", {
+        ...fields,
+        durationMs: Date.now() - startedAt,
+      });
+    } catch (error) {
+      this.log("error", "cos.upload.failed", {
+        ...fields,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
   private async handleProfile(options: SetupOptions) {
     const { zhName, starName, category } = options;
+    const startedAt = Date.now();
+    this.log("info", "profile.process.start", { accountId: starName });
     try {
       const profile = await this.fetchProfile(starName);
       const payload = this.ytdlpProfileResponse2Instar(
@@ -295,11 +372,27 @@ export abstract class BaseWorker {
           starName,
           payload.avatar,
         );
-        await this.uploadRemoteUrl2Cos(payload.avatar, avatarObjectKey);
+        await this.runLoggedUpload(
+          {
+            resourceType: "profile-avatar",
+            objectKey: avatarObjectKey,
+          },
+          () => this.uploadRemoteUrl2Cos(payload.avatar, avatarObjectKey),
+        );
         payload.avatar = avatarObjectKey;
       }
       await this.syncStarProfile(payload);
+      this.log("info", "profile.process.done", {
+        accountId: starName,
+        durationMs: Date.now() - startedAt,
+        insStarId: payload.insStarId,
+      });
     } catch (error) {
+      this.log("error", "profile.process.failed", {
+        accountId: starName,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw new Error(
         `抓取用户信息同步失败: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -312,25 +405,51 @@ export abstract class BaseWorker {
       suffix: "image",
       ext: "jpg",
     });
-    await this.uploadRemoteUrl2Cos(post.thumbnailUrl, imageObjectKey);
+    await this.runLoggedUpload(
+      {
+        postId: post.postId,
+        resourceType: "post-image",
+        objectKey: imageObjectKey,
+      },
+      () => this.uploadRemoteUrl2Cos(post.thumbnailUrl, imageObjectKey),
+    );
     return { mediaUrl: imageObjectKey, thumbnailUrl: imageObjectKey };
   }
 
   private async uploadVideoPostMedia(post: Post) {
     const objectKey = buildCosObjectKey(post, { prefix: "fengniao" });
-    await this.uploadPostStreamToCos(post, objectKey);
+    await this.runLoggedUpload(
+      {
+        postId: post.postId,
+        resourceType: "post-video",
+        objectKey,
+      },
+      () => this.uploadPostStreamToCos(post, objectKey),
+    );
     const thumbnailObjectKey = buildCosObjectKey(post, {
       prefix: "fengniao",
       suffix: "thumb",
       ext: "jpg",
     });
-    await this.uploadRemoteUrl2Cos(post.thumbnailUrl, thumbnailObjectKey);
+    await this.runLoggedUpload(
+      {
+        postId: post.postId,
+        resourceType: "post-thumbnail",
+        objectKey: thumbnailObjectKey,
+      },
+      () => this.uploadRemoteUrl2Cos(post.thumbnailUrl, thumbnailObjectKey),
+    );
     return { mediaUrl: objectKey, thumbnailUrl: thumbnailObjectKey };
   }
 
   private async executeAccountTask(
     task: ClaimedAccountTask,
   ): Promise<AccountExecutionSummary> {
+    const startedAt = Date.now();
+    this.log("info", "account.crawl.start", {
+      limit: task.options.limit ?? 100,
+      categoryId: task.options.categoryId ?? null,
+    });
     const setup: SetupOptions = {
       starName: task.accountId,
       ...(task.options.categoryId === undefined
@@ -353,6 +472,8 @@ export abstract class BaseWorker {
         continue;
       }
       await this.onPostStart?.(ref.postId);
+      const postStartedAt = Date.now();
+      this.log("info", "post.process.start", { postId: ref.postId });
       try {
         const detail = await this.fetchPostDetail(ref);
         await sleepRandom2000To8000();
@@ -376,6 +497,11 @@ export abstract class BaseWorker {
         });
         await this.syncPostDetail(payload, post.publishedAt);
         newCount += 1;
+        this.log("info", "post.process.done", {
+          postId: ref.postId,
+          mediaType: imageMode ? "image" : "video",
+          durationMs: Date.now() - postStartedAt,
+        });
         if (
           post.publishedAt !== undefined &&
           (lastPostAt === undefined || post.publishedAt > lastPostAt)
@@ -385,9 +511,15 @@ export abstract class BaseWorker {
         }
       } catch (error) {
         failedCount += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        this.log("error", "post.process.failed", {
+          postId: ref.postId,
+          durationMs: Date.now() - postStartedAt,
+          error: message,
+        });
         await this.syncPostFailure(
           ref.postId,
-          error instanceof Error ? error.message : String(error),
+          message,
         );
       } finally {
         await this.onPostEnd?.(ref.postId);
@@ -398,13 +530,20 @@ export abstract class BaseWorker {
       throw new Error(`账号内 ${failedCount} 个帖子全部处理失败`);
     }
 
-    return {
+    const summary: AccountExecutionSummary = {
       outcome: failedCount > 0 ? "partial" : "success",
       newCount,
       failedCount,
       ...(lastPostAt === undefined ? {} : { lastPostAt }),
       ...(lastVideoId === undefined ? {} : { lastVideoId }),
     };
+    this.log("info", "account.crawl.done", {
+      durationMs: Date.now() - startedAt,
+      outcome: summary.outcome,
+      newCount,
+      failedCount,
+    });
+    return summary;
   }
 
   async autoSetup(): Promise<void> {
@@ -422,6 +561,7 @@ export abstract class BaseWorker {
         }
 
         emptyClaims = 0;
+        this.taskContext = task;
         await this.onTaskStart(task);
         try {
           let summary: AccountExecutionSummary;
@@ -436,6 +576,7 @@ export abstract class BaseWorker {
           await this.onTaskSuccess(task, summary);
         } finally {
           await this.onTaskEnd(task);
+          this.taskContext = null;
         }
       }
     } finally {
