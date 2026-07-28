@@ -270,7 +270,8 @@ export abstract class BaseWorker {
       durationMs: Date.now() - startedAt,
       postCount: refs.length,
     });
-    return refs;
+    // 倒序
+    return refs.reverse();
   }
 
   private async fetchPostDetail(ref: PlatformPostRef) {
