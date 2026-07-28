@@ -28,7 +28,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
+      - name: 设置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
@@ -61,4 +65,6 @@ jobs:
           APP_INSTAR_WEBHOOK_AUTH_BEARER: ${{ secrets.INSTAR_ACCOUNT_WEBHOOK_TOKEN }}
           BUCKET: ${{ secrets.COS_BUCKET }}
           REGION: ${{ secrets.COS_REGION }}
-        run: bun run worker:github-actions
+        run: |
+          bun run build
+          bun run start:github-actions

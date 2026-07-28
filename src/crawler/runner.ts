@@ -5,8 +5,7 @@ import type {
   ProcessResult,
   ProcessStream,
 } from "./types/yt-dlp";
-import { sleep } from "bun";
-import { sleepRandom2000To8000 } from "./utils/sleep";
+import { sleep, sleepRandom2000To8000 } from "./utils/sleep";
 
 export class Runner {
   constructor(private binPath: string) {}

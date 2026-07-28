@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "test": "bun test",
-    "worker:github-actions": "bun run src/crawler/github-actions.ts"
+    "start:github-actions": "node dist/github-actions.js",
+    "build": "bun run build.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -67,8 +67,9 @@ export class CosUploader {
       Region,
       Key: params.Key,
       FilePath: params.FilePath!,
+      SliceSize: 1024 * 1024 * 5,     // 触发分块上传的阈值，超过5MB使用分块上传，非必须
       onProgress({ percent }) {
-        console.log('上传进度', percent + '%');
+        console.log('上传进度', percent * 100 + '%');
       },
     });
   }
@@ -156,3 +157,14 @@ export class CosUploader {
 }
 
 export const uploader = new CosUploader();
+
+
+// process.env.BUCKET = 'zyb-fengniao-1253445850'
+// // 获取当前文件绝对路径
+// const __filename = fileURLToPath(import.meta.url);
+// // 获取当前文件所在目录
+// const __dirname = path.dirname(__filename);
+// await uploader.putObject({
+//   Key: 'fengniao/fengniao_9bf55a91-667f-48f5-b6ac-a2a31922468c78.mov',
+//   FilePath: path.join(__dirname,'./fengniao_9bf55a91-667f-48f5-b6ac-a2a31922468c78.mov')
+// })

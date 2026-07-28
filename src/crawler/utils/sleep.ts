@@ -1,4 +1,6 @@
-import { sleep } from "bun";
+export function sleep(wait: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, wait));
+}
 
 function getRandomInt(min: number, max: number): number {
   const floorMin = Math.floor(min);

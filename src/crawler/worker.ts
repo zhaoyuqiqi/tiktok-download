@@ -1,7 +1,6 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { Readable } from "node:stream";
-import { sleep } from "bun";
 import type { ClaimedAccountTask } from "../workers/protocol.ts";
 import { Runner } from "./runner";
 import type { InstarPost } from "./types/instar";
@@ -23,7 +22,7 @@ import {
   safeSegment,
   toIsoOrUndefined,
 } from "./utils/normalize";
-import { sleepRandom2000To8000 } from "./utils/sleep";
+import { sleep, sleepRandom2000To8000 } from "./utils/sleep";
 
 export interface AccountExecutionSummary extends Record<string, unknown> {
   outcome: "success" | "partial";
